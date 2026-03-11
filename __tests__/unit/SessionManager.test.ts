@@ -215,8 +215,14 @@ describe("SessionManager", () => {
       response_id: "resp_1",
     });
 
+    eventBus.emit("realtime:response_done", {
+      type: "response.done",
+      response: { id: "resp_1", status: "completed" },
+    });
+
     const metrics = manager.getCurrentMetrics();
-    expect(metrics.inputProcessingMs).toBeGreaterThanOrEqual(0);
+    expect(metrics).not.toBeNull();
+    expect(metrics!.inputProcessingMs).toBeGreaterThanOrEqual(0);
   });
 
   it("should handle interruption by resetting avatar to listening", () => {

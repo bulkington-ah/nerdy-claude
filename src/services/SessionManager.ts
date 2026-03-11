@@ -35,6 +35,7 @@ export class SessionManager {
   private isFirstAudioDelta: boolean = true;
   private isSpeaking: boolean = false;
   private muted: boolean = false;
+  private lastTurnMetrics: LatencyMetrics | null = null;
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
@@ -61,9 +62,9 @@ export class SessionManager {
     return this.conversationStore.getMessages();
   }
 
-  /** Get current latency metrics for the in-progress turn. */
-  public getCurrentMetrics(): LatencyMetrics {
-    return this.latencyTracker.computeCurrentMetrics();
+  /** Get latency metrics for the most recent completed turn. */
+  public getCurrentMetrics(): LatencyMetrics | null {
+    return this.lastTurnMetrics;
   }
 
   /** Get latency history across all turns. */
@@ -155,6 +156,12 @@ export class SessionManager {
 
     this.conversationStore.addUserMessage(text);
     this.eventBus.emit("session:user_message", text);
+
+    // Start latency tracking for text input (mirrors voice speech_stopped path)
+    this.latencyTracker.reset();
+    this.latencyTracker.markStart(PipelineStage.INPUT_PROCESSING);
+    this.latencyTracker.markStart(PipelineStage.END_TO_END);
+    this.isFirstAudioDelta = true;
 
     const itemCreate: ConversationItemCreateClientEvent = {
       type: "conversation.item.create",
@@ -282,7 +289,7 @@ export class SessionManager {
     // Response complete
     this.eventBus.on("realtime:response_done", () => {
       this.isSpeaking = false;
-      this.latencyTracker.finalizeTurn();
+      this.lastTurnMetrics = this.latencyTracker.finalizeTurn();
 
       this.conversationStore.finalizeAssistantMessage();
       this.eventBus.emit("avatar:set_expression", "idle");
