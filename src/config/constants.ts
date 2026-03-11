@@ -12,6 +12,8 @@ export const VAD_CONFIG = {
   create_response: false,
 };
 
+export const INPUT_AUDIO_TRANSCRIPTION_MODEL = "whisper-1";
+
 export const ANALYSER_FFT_SIZE = 256;
 export const ANALYSER_SMOOTHING = 0.3;
 export const AMPLITUDE_SCALE_FACTOR = 4.0;

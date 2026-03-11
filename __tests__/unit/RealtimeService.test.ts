@@ -189,6 +189,35 @@ describe("RealtimeService", () => {
     );
   });
 
+  it("should include input_audio_transcription in session config", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
+
+    const msg = JSON.parse(dc.sentMessages[0]);
+    expect(msg.session.input_audio_transcription).toBeDefined();
+    expect(msg.session.input_audio_transcription.model).toBe("whisper-1");
+  });
+
+  it("should emit user_transcript for input_audio_transcription.completed", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
+
+    const handler = jest.fn();
+    eventBus.on("realtime:user_transcript", handler);
+
+    dc.simulateMessage({
+      type: "conversation.item.input_audio_transcription.completed",
+      transcript: "Hello world",
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "conversation.item.input_audio_transcription.completed",
+        transcript: "Hello world",
+      }),
+    );
+  });
+
   it("should send SDP offer to OpenAI with ephemeral key", async () => {
     const stream = new MockMediaStream() as unknown as MediaStream;
     await service.connect("test-ephemeral-key", stream);

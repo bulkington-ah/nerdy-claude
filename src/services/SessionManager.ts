@@ -8,6 +8,7 @@ import { PipelineStage, LatencyMetrics } from "@/types/pipeline";
 import { SessionState, Message } from "@/types/conversation";
 import {
   ResponseOutputAudioTranscriptDeltaEvent,
+  InputAudioTranscriptionCompletedEvent,
   ConversationItemCreateClientEvent,
   ResponseCreateClientEvent,
 } from "@/types/realtime";
@@ -213,6 +214,16 @@ export class SessionManager {
       // VAD has create_response: false to prevent echo-triggered double responses.
       if (!this.isSpeaking) {
         this.realtimeService.sendEvent({ type: "response.create" });
+      }
+    });
+
+    // User speech transcribed — add to transcript
+    this.eventBus.on("realtime:user_transcript", (payload: unknown) => {
+      const event = payload as InputAudioTranscriptionCompletedEvent;
+      const text = event.transcript?.trim();
+      if (text) {
+        this.conversationStore.addUserMessage(text);
+        this.eventBus.emit("session:user_message", text);
       }
     });
 

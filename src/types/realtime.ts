@@ -12,6 +12,9 @@ export interface RealtimeSessionConfig {
     silence_duration_ms: number;
     create_response?: boolean;
   };
+  input_audio_transcription?: {
+    model: string;
+  };
 }
 
 // Server events we handle
@@ -70,6 +73,11 @@ export interface ResponseCancelledEvent extends RealtimeServerEvent {
   response_id: string;
 }
 
+export interface InputAudioTranscriptionCompletedEvent extends RealtimeServerEvent {
+  type: "conversation.item.input_audio_transcription.completed";
+  transcript: string;
+}
+
 export interface ErrorEvent extends RealtimeServerEvent {
   type: "error";
   error: { type: string; code: string; message: string };
@@ -86,6 +94,7 @@ export type RealtimeEvent =
   | ResponseOutputAudioDoneEvent
   | ResponseDoneEvent
   | ResponseCancelledEvent
+  | InputAudioTranscriptionCompletedEvent
   | ErrorEvent;
 
 // Client events we may send over the data channel.

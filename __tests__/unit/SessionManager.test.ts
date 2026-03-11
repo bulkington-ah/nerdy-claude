@@ -353,6 +353,41 @@ describe("SessionManager", () => {
     });
   });
 
+  describe("voice transcript", () => {
+    it("should add user message to transcript on input_audio_transcription", () => {
+      eventBus.emit("realtime:user_transcript", {
+        type: "conversation.item.input_audio_transcription.completed",
+        transcript: "What is photosynthesis?",
+      });
+
+      const messages = manager.getTranscript();
+      expect(messages).toHaveLength(1);
+      expect(messages[0].role).toBe("user");
+      expect(messages[0].content).toBe("What is photosynthesis?");
+    });
+
+    it("should emit session:user_message on voice transcript", () => {
+      const handler = jest.fn();
+      eventBus.on("session:user_message", handler);
+
+      eventBus.emit("realtime:user_transcript", {
+        type: "conversation.item.input_audio_transcription.completed",
+        transcript: "Hello tutor",
+      });
+
+      expect(handler).toHaveBeenCalledWith("Hello tutor");
+    });
+
+    it("should ignore empty transcripts", () => {
+      eventBus.emit("realtime:user_transcript", {
+        type: "conversation.item.input_audio_transcription.completed",
+        transcript: "   ",
+      });
+
+      expect(manager.getTranscript()).toHaveLength(0);
+    });
+  });
+
   describe("sendTextMessage", () => {
     // Helper to set internal state for testing (private field)
     function forceState(mgr: SessionManager, state: string): void {

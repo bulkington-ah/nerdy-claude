@@ -5,6 +5,7 @@ import {
   REALTIME_CALL_MODEL,
   REALTIME_VOICE,
   VAD_CONFIG,
+  INPUT_AUDIO_TRANSCRIPTION_MODEL,
 } from "@/config/constants";
 
 // Map server event types to EventBus event names
@@ -20,6 +21,7 @@ const EVENT_MAP: Record<string, string> = {
   "response.output_audio.done": "realtime:audio_done",
   "response.done": "realtime:response_done",
   "response.cancelled": "realtime:response_cancelled",
+  "conversation.item.input_audio_transcription.completed": "realtime:user_transcript",
   "error": "realtime:error",
 };
 
@@ -156,6 +158,7 @@ export class RealtimeService {
         instructions: SocraticPrompt.build(),
         voice: REALTIME_VOICE,
         turn_detection: { ...VAD_CONFIG },
+        input_audio_transcription: { model: INPUT_AUDIO_TRANSCRIPTION_MODEL },
       },
     });
   }
