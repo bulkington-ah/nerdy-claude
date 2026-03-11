@@ -10,7 +10,7 @@ import {
  */
 export class AudioAnalyser {
   private analyserNode: AnalyserNode;
-  private timeDomainData: Uint8Array;
+  private timeDomainData: Uint8Array<ArrayBuffer>;
 
   constructor(analyserNode: AnalyserNode) {
     this.analyserNode = analyserNode;
@@ -19,7 +19,7 @@ export class AudioAnalyser {
     this.analyserNode.fftSize = ANALYSER_FFT_SIZE;
     this.analyserNode.smoothingTimeConstant = ANALYSER_SMOOTHING;
 
-    this.timeDomainData = new Uint8Array(this.analyserNode.frequencyBinCount);
+    this.timeDomainData = new Uint8Array(this.analyserNode.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   }
 
   /**

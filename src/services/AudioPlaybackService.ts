@@ -69,7 +69,7 @@ export class AudioPlaybackService {
       floats.length,
       AUDIO_SAMPLE_RATE,
     );
-    audioBuffer.copyToChannel(floats, 0);
+    audioBuffer.copyToChannel(floats as Float32Array<ArrayBuffer>, 0);
 
     this.scheduleBuffer(audioBuffer);
   }
