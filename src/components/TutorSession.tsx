@@ -113,36 +113,9 @@ export default function TutorSession(): React.JSX.Element {
   }, []);
 
   return (
-    <div className="flex min-h-screen flex-col items-center gap-6 bg-zinc-50 px-4 py-8 dark:bg-black">
-      <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-        AI Tutor
-      </h1>
-
-      {/* Avatar */}
-      <div className="relative">
-        <AvatarCanvas
-          eventBus={eventBusRef.current}
-          audioAnalyser={audioAnalyser}
-          width={300}
-          height={300}
-        />
-        {/* State indicator badge */}
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
-          <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-medium capitalize text-white">
-            {sessionState}
-          </span>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <MicButton
-        sessionState={sessionState}
-        onStart={handleStart}
-        onStop={handleStop}
-      />
-
-      {/* Transcript */}
-      <div className="w-full max-w-lg">
+    <div className="relative min-h-screen bg-zinc-50 px-4 py-8 dark:bg-black">
+      {/* Left column — Chat & Transcript */}
+      <div className="absolute left-4 top-8 w-full max-w-md">
         <TranscriptPanel
           messages={messages}
           currentAssistantText={currentAssistantText}
@@ -155,8 +128,38 @@ export default function TutorSession(): React.JSX.Element {
         </div>
       </div>
 
-      {/* Latency HUD */}
-      <div className="w-full max-w-lg">
+      {/* Center column — Avatar & Controls */}
+      <div className="flex flex-col items-center gap-6">
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
+          AI Tutor
+        </h1>
+
+        {/* Avatar */}
+        <div className="relative">
+          <AvatarCanvas
+            eventBus={eventBusRef.current}
+            audioAnalyser={audioAnalyser}
+            width={300}
+            height={300}
+          />
+          {/* State indicator badge */}
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
+            <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-medium capitalize text-white">
+              {sessionState}
+            </span>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <MicButton
+          sessionState={sessionState}
+          onStart={handleStart}
+          onStop={handleStop}
+        />
+      </div>
+
+      {/* Top-right — Latency HUD */}
+      <div className="absolute right-4 top-8 w-full max-w-sm">
         <LatencyOverlay
           currentMetrics={currentMetrics}
           averageMetrics={averageMetrics}

@@ -6,9 +6,9 @@ export const AUDIO_FORMAT = "pcm16";
 
 export const VAD_CONFIG = {
   type: "server_vad" as const,
-  threshold: 0.6,
+  threshold: 0.8,
   prefix_padding_ms: 300,
-  silence_duration_ms: 500,
+  silence_duration_ms: 700,
   create_response: false,
 };
 
