@@ -17,21 +17,29 @@ export async function createSessionHandler(): Promise<HandlerResult> {
   }
 
   try {
-    const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
+    const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: REALTIME_MODEL,
-        voice: REALTIME_VOICE,
+        session: {
+          type: "realtime",
+          model: REALTIME_MODEL,
+          audio: {
+            output: {
+              voice: REALTIME_VOICE,
+            },
+          },
+        },
       }),
     });
 
     if (!response.ok) {
+      const text = await response.text();
       return {
-        body: { error: `OpenAI API error: ${response.status} ${response.statusText}` },
+        body: { error: `OpenAI API error: ${response.status} ${text}` },
         status: 502,
       };
     }
@@ -39,8 +47,8 @@ export async function createSessionHandler(): Promise<HandlerResult> {
     const data = await response.json();
     return {
       body: {
-        clientSecret: data.client_secret.value,
-        expiresAt: data.client_secret.expires_at,
+        clientSecret: data.value,
+        expiresAt: data.expires_at,
       },
       status: 200,
     };

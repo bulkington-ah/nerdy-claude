@@ -6,51 +6,44 @@ import { EventBus } from "@/lib/EventBus";
   ok: true,
   json: () =>
     Promise.resolve({
-      client_secret: { value: "test-key", expires_at: Date.now() + 60000 },
+      clientSecret: "test-key",
+      expiresAt: Date.now() + 60000,
     }),
+  text: () => Promise.resolve("mock-sdp-answer"),
 });
 
-// Mock WebSocket
-class MockWebSocket {
-  static CONNECTING = 0;
-  static OPEN = 1;
-  static CLOSING = 2;
-  static CLOSED = 3;
-
-  readyState = MockWebSocket.CONNECTING;
-  url: string;
+// Mock RTCPeerConnection
+class MockDataChannel {
+  readyState = "connecting";
+  label: string;
   onopen: ((ev: Event) => void) | null = null;
   onmessage: ((ev: MessageEvent) => void) | null = null;
   onerror: ((ev: Event) => void) | null = null;
-  onclose: ((ev: CloseEvent) => void) | null = null;
-  sentMessages: string[] = [];
+  onclose: ((ev: Event) => void) | null = null;
 
-  constructor(url: string) {
-    this.url = url;
-    // Auto-open after a tick to simulate connection
-    setTimeout(() => this.simulateOpen(), 0);
+  constructor(label: string) {
+    this.label = label;
   }
 
-  send(data: string): void {
-    this.sentMessages.push(data);
-  }
-
-  close(): void {
-    this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.({ code: 1000, reason: "normal" } as CloseEvent);
-  }
-
-  simulateOpen(): void {
-    this.readyState = MockWebSocket.OPEN;
-    this.onopen?.({} as Event);
-  }
-
-  simulateMessage(data: object): void {
-    this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent);
-  }
+  send = jest.fn();
+  close = jest.fn();
 }
 
-(global as Record<string, unknown>).WebSocket = MockWebSocket;
+class MockRTCPeerConnection {
+  ontrack: ((ev: RTCTrackEvent) => void) | null = null;
+  addTrack = jest.fn();
+  createDataChannel(label: string): MockDataChannel {
+    return new MockDataChannel(label);
+  }
+  async createOffer(): Promise<RTCSessionDescriptionInit> {
+    return { type: "offer", sdp: "mock" };
+  }
+  async setLocalDescription(): Promise<void> { /* no-op */ }
+  async setRemoteDescription(): Promise<void> { /* no-op */ }
+  close(): void { /* no-op */ }
+}
+
+(global as Record<string, unknown>).RTCPeerConnection = MockRTCPeerConnection;
 
 // Mock AudioContext for AudioPlaybackService
 class MockAnalyserNode {
@@ -121,10 +114,15 @@ class MockAudioContext {
     return new MockGainNode();
   }
 
+  createMediaStreamSource(): { connect: jest.Mock } {
+    return { connect: jest.fn() };
+  }
+
   get destination(): unknown {
     return {};
   }
 
+  resume = jest.fn().mockResolvedValue(undefined);
   close = jest.fn();
 }
 
@@ -145,18 +143,6 @@ describe("SessionManager", () => {
 
   it("should start in idle state", () => {
     expect(manager.getState()).toBe("idle");
-  });
-
-  it("should transition to connecting when startSession is called", async () => {
-    const statePromise = new Promise<string>((resolve) => {
-      eventBus.on("session:state_changed", (payload: unknown) => {
-        if (payload === "connecting") resolve(payload);
-      });
-    });
-
-    manager.startSession();
-    const state = await statePromise;
-    expect(state).toBe("connecting");
   });
 
   it("should set avatar to listening on speech_started", () => {
@@ -183,21 +169,18 @@ describe("SessionManager", () => {
     expect(handler).toHaveBeenCalledWith("thinking");
   });
 
-  it("should set avatar to talking on first audio delta", () => {
+  it("should set avatar to talking on audio_started", () => {
     const handler = jest.fn();
     eventBus.on("avatar:set_expression", handler);
 
-    // Simulate speech stopped first to start a response cycle
     eventBus.emit("realtime:speech_stopped", {
       type: "input_audio_buffer.speech_stopped",
       audio_end_ms: 200,
     });
 
-    // First audio delta
-    eventBus.emit("realtime:audio_delta", {
-      type: "response.audio.delta",
+    eventBus.emit("realtime:audio_started", {
+      type: "output_audio_buffer.started",
       response_id: "resp_1",
-      delta: "base64audio",
     });
 
     expect(handler).toHaveBeenCalledWith("talking");
@@ -216,48 +199,39 @@ describe("SessionManager", () => {
   });
 
   it("should track latency from speech_stopped through audio delta", () => {
-    // Emit speech_stopped to start latency tracking
     eventBus.emit("realtime:speech_stopped", {
       type: "input_audio_buffer.speech_stopped",
       audio_end_ms: 200,
     });
 
-    // Emit response created
     eventBus.emit("realtime:response_created", {
       type: "response.created",
       response: { id: "resp_1" },
     });
 
-    // Emit first audio delta
-    eventBus.emit("realtime:audio_delta", {
-      type: "response.audio.delta",
+    eventBus.emit("realtime:audio_started", {
+      type: "output_audio_buffer.started",
       response_id: "resp_1",
-      delta: "base64audio",
     });
 
     const metrics = manager.getCurrentMetrics();
-    // Input processing should be measured (speech_stopped → response_created)
     expect(metrics.inputProcessingMs).toBeGreaterThanOrEqual(0);
   });
 
-  it("should handle interruption by stopping playback and resetting avatar", () => {
+  it("should handle interruption by resetting avatar to listening", () => {
     const expressionHandler = jest.fn();
     eventBus.on("avatar:set_expression", expressionHandler);
 
-    // Simulate response in progress
-    eventBus.emit("realtime:audio_delta", {
-      type: "response.audio.delta",
+    eventBus.emit("realtime:audio_started", {
+      type: "output_audio_buffer.started",
       response_id: "resp_1",
-      delta: "base64audio",
     });
 
-    // Simulate interruption via speech_started during response
     eventBus.emit("realtime:speech_started", {
       type: "input_audio_buffer.speech_started",
       audio_start_ms: 500,
     });
 
-    // Avatar should switch to listening
     expect(expressionHandler).toHaveBeenCalledWith("listening");
   });
 

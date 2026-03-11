@@ -2,95 +2,165 @@ import { EventBus } from "@/lib/EventBus";
 import { SocraticPrompt } from "@/lib/SocraticPrompt";
 import { RealtimeServerEvent } from "@/types/realtime";
 import {
-  REALTIME_MODEL,
+  REALTIME_CALL_MODEL,
   REALTIME_VOICE,
-  AUDIO_FORMAT,
-  VAD_CONFIG,
 } from "@/config/constants";
 
 // Map server event types to EventBus event names
+// GA API uses different event names than the beta API
 const EVENT_MAP: Record<string, string> = {
   "session.created": "realtime:session_created",
   "session.updated": "realtime:session_updated",
   "input_audio_buffer.speech_started": "realtime:speech_started",
   "input_audio_buffer.speech_stopped": "realtime:speech_stopped",
   "response.created": "realtime:response_created",
-  "response.audio.delta": "realtime:audio_delta",
-  "response.audio_transcript.delta": "realtime:transcript_delta",
+  "output_audio_buffer.started": "realtime:audio_started",
+  "response.output_audio_transcript.delta": "realtime:transcript_delta",
+  "response.output_audio.done": "realtime:audio_done",
   "response.done": "realtime:response_done",
   "response.cancelled": "realtime:response_cancelled",
   "error": "realtime:error",
 };
 
+const REALTIME_BASE_URL = "https://api.openai.com/v1/realtime/calls";
+
 export class RealtimeService {
-  private ws: WebSocket | null = null;
+  private pc: RTCPeerConnection | null = null;
+  private dc: RTCDataChannel | null = null;
   private eventBus: EventBus;
   private connected: boolean = false;
+
+  // Remote audio element for playback
+  private audioElement: HTMLAudioElement | null = null;
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
   }
 
-  public connect(ephemeralKey: string): void {
-    const url = `wss://api.openai.com/v1/realtime?model=${REALTIME_MODEL}`;
-    this.ws = new WebSocket(url);
+  /**
+   * Connect to the OpenAI Realtime API via WebRTC.
+   * 1. Create RTCPeerConnection
+   * 2. Add mic audio track
+   * 3. Create data channel for events
+   * 4. SDP offer/answer exchange with OpenAI using ephemeral key
+   */
+  public async connect(ephemeralKey: string, micStream: MediaStream): Promise<void> {
+    this.pc = new RTCPeerConnection();
 
-    this.ws.onopen = () => {
+    // Add mic audio track to send to OpenAI
+    for (const track of micStream.getAudioTracks()) {
+      this.pc.addTrack(track, micStream);
+    }
+
+    // Handle remote audio (response from OpenAI)
+    this.pc.ontrack = (event: RTCTrackEvent) => {
+      console.log("[RealtimeService] Remote audio track received");
+      this.audioElement = new Audio();
+      this.audioElement.srcObject = event.streams[0];
+      this.audioElement.autoplay = true;
+      this.eventBus.emit("realtime:remote_stream", event.streams[0]);
+    };
+
+    // Create data channel for events (must be created before offer)
+    this.dc = this.pc.createDataChannel("oai-events");
+
+    this.dc.onopen = () => {
+      console.log("[RealtimeService] Data channel open");
       this.connected = true;
       this.sendSessionConfig();
       this.eventBus.emit("realtime:connected");
     };
 
-    this.ws.onmessage = (event: MessageEvent) => {
+    this.dc.onmessage = (event: MessageEvent) => {
       this.handleServerEvent(event.data as string);
     };
 
-    this.ws.onerror = () => {
-      this.eventBus.emit("realtime:error", { message: "WebSocket error" });
-    };
-
-    this.ws.onclose = () => {
+    this.dc.onclose = () => {
+      console.log("[RealtimeService] Data channel closed");
       this.connected = false;
       this.eventBus.emit("realtime:disconnected");
     };
+
+    this.dc.onerror = (err) => {
+      console.error("[RealtimeService] Data channel error:", err);
+      this.eventBus.emit("realtime:error", { message: "Data channel error" });
+    };
+
+    // Create and set local SDP offer
+    const offer = await this.pc.createOffer();
+    await this.pc.setLocalDescription(offer);
+
+    // Exchange SDP with OpenAI
+    console.log("[RealtimeService] Sending SDP offer to OpenAI...");
+    const sdpResponse = await fetch(`${REALTIME_BASE_URL}?model=${REALTIME_CALL_MODEL}`, {
+      method: "POST",
+      body: offer.sdp,
+      headers: {
+        Authorization: `Bearer ${ephemeralKey}`,
+        "Content-Type": "application/sdp",
+      },
+    });
+
+    if (!sdpResponse.ok) {
+      const text = await sdpResponse.text();
+      console.error("[RealtimeService] SDP exchange failed:", sdpResponse.status, text);
+      throw new Error(`SDP exchange failed: ${sdpResponse.status}`);
+    }
+
+    const answerSdp = await sdpResponse.text();
+    console.log("[RealtimeService] Got SDP answer, setting remote description");
+    await this.pc.setRemoteDescription({
+      type: "answer",
+      sdp: answerSdp,
+    });
   }
 
   public disconnect(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-      this.connected = false;
+    if (this.dc) {
+      this.dc.close();
+      this.dc = null;
     }
+    if (this.pc) {
+      this.pc.close();
+      this.pc = null;
+    }
+    if (this.audioElement) {
+      this.audioElement.srcObject = null;
+      this.audioElement = null;
+    }
+    this.connected = false;
   }
 
-  public sendAudio(base64Audio: string): void {
-    if (!this.ws || !this.connected) return;
-    this.send({
-      type: "input_audio_buffer.append",
-      audio: base64Audio,
-    });
+  public sendAudio(_base64Audio: string): void {
+    // With WebRTC, audio is sent via the media track automatically.
+    // This method is kept for interface compatibility but is a no-op.
   }
 
   public isConnected(): boolean {
     return this.connected;
   }
 
+  /** Send a message over the data channel. */
+  public sendEvent(data: object): void {
+    if (!this.dc || this.dc.readyState !== "open") return;
+    this.dc.send(JSON.stringify(data));
+  }
+
   private sendSessionConfig(): void {
-    this.send({
+    // GA API session config format
+    this.sendEvent({
       type: "session.update",
       session: {
         instructions: SocraticPrompt.build(),
         voice: REALTIME_VOICE,
-        input_audio_format: AUDIO_FORMAT,
-        output_audio_format: AUDIO_FORMAT,
-        turn_detection: VAD_CONFIG,
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 300,
+        },
       },
     });
-  }
-
-  private send(data: object): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify(data));
   }
 
   private handleServerEvent(rawData: string): void {
@@ -98,7 +168,7 @@ export class RealtimeService {
     try {
       event = JSON.parse(rawData) as RealtimeServerEvent;
     } catch {
-      return; // Ignore malformed messages
+      return;
     }
 
     const busEvent = EVENT_MAP[event.type];

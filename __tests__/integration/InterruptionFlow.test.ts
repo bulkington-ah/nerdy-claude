@@ -103,10 +103,9 @@ describe("Interruption Flow Integration", () => {
       type: "response.created",
       response: { id: "resp_1" },
     });
-    eventBus.emit("realtime:audio_delta", {
-      type: "response.audio.delta",
+    eventBus.emit("realtime:audio_started", {
+      type: "output_audio_buffer.started",
       response_id: "resp_1",
-      delta: "base64audio",
     });
 
     // Student interrupts

@@ -5,19 +5,17 @@ import { AudioPlaybackService } from "@/services/AudioPlaybackService";
 import { RealtimeService } from "@/services/RealtimeService";
 import { AvatarService } from "@/services/AvatarService";
 import { AudioAnalyser } from "@/lib/AudioAnalyser";
-import { MicCapture } from "@/lib/MicCapture";
 import { PipelineStage, LatencyMetrics } from "@/types/pipeline";
 import { SessionState, Message } from "@/types/conversation";
 import {
-  ResponseAudioDeltaEvent,
   ResponseAudioTranscriptDeltaEvent,
 } from "@/types/realtime";
 
 /**
  * Orchestrates all services for a tutoring session:
- * - Requests ephemeral key, connects RealtimeService
- * - Starts mic capture, routes audio to Realtime API
- * - Routes Realtime API audio to AudioPlaybackService
+ * - Requests ephemeral key, connects RealtimeService via WebRTC
+ * - Mic audio goes through WebRTC media track directly
+ * - Response audio comes back via WebRTC remote track
  * - Drives AvatarService expressions from Realtime events
  * - Tracks latency metrics via LatencyTracker
  * - Manages transcript via ConversationStore
@@ -30,7 +28,7 @@ export class SessionManager {
   private realtimeService: RealtimeService;
   private avatarService: AvatarService;
   private audioAnalyser: AudioAnalyser | null = null;
-  private micCapture: MicCapture;
+  private micStream: MediaStream | null = null;
 
   private state: SessionState = "idle";
   private isFirstAudioDelta: boolean = true;
@@ -42,7 +40,6 @@ export class SessionManager {
     this.audioPlayback = new AudioPlaybackService(eventBus);
     this.realtimeService = new RealtimeService(eventBus);
     this.avatarService = new AvatarService(eventBus);
-    this.micCapture = new MicCapture();
 
     // Wire up AudioAnalyser from playback's AnalyserNode
     this.audioAnalyser = new AudioAnalyser(this.audioPlayback.getAnalyserNode());
@@ -78,36 +75,54 @@ export class SessionManager {
 
   /**
    * Start a new tutoring session:
-   * 1. Fetch ephemeral key from /api/session
-   * 2. Connect to OpenAI Realtime API
-   * 3. Start mic capture
+   * 1. Get mic permission
+   * 2. Fetch ephemeral key from /api/session
+   * 3. Connect to OpenAI Realtime API via WebRTC (mic + events)
    */
   public async startSession(): Promise<void> {
+    console.log("[SessionManager] startSession called");
     this.setState("connecting");
 
     try {
+      // Resume AudioContext (browsers suspend it until user gesture)
+      await this.audioPlayback.resume();
+
+      // Get mic access
+      console.log("[SessionManager] Requesting mic access...");
+      this.micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      console.log("[SessionManager] Mic access granted");
+
+      // Fetch ephemeral key
+      console.log("[SessionManager] Fetching ephemeral key...");
       const response = await fetch("/api/session", { method: "POST" });
       if (!response.ok) {
-        throw new Error(`Session creation failed: ${response.status}`);
+        const text = await response.text();
+        throw new Error(`Session creation failed: ${response.status} ${text}`);
       }
 
       const { clientSecret } = await response.json();
-      this.realtimeService.connect(clientSecret);
+      console.log("[SessionManager] Got ephemeral key, connecting via WebRTC...");
 
-      // Start mic capture — sends audio to Realtime API
-      await this.micCapture.start((base64Pcm) => {
-        this.realtimeService.sendAudio(base64Pcm);
-      });
+      // Connect — passes mic stream to WebRTC peer connection
+      await this.realtimeService.connect(clientSecret, this.micStream);
 
+      console.log("[SessionManager] WebRTC connected, listening");
       this.setState("listening");
-    } catch {
+    } catch (error) {
+      console.error("[SessionManager] startSession failed:", error);
+      this.stopMicStream();
       this.setState("idle");
     }
   }
 
   /** End the session and release all resources. */
   public endSession(): void {
-    this.micCapture.stop();
+    this.stopMicStream();
     this.realtimeService.disconnect();
     this.audioPlayback.stop();
     this.setState("idle");
@@ -121,18 +136,31 @@ export class SessionManager {
     this.state = "idle";
   }
 
+  private stopMicStream(): void {
+    if (this.micStream) {
+      for (const track of this.micStream.getTracks()) {
+        track.stop();
+      }
+      this.micStream = null;
+    }
+  }
+
   private setState(newState: SessionState): void {
     this.state = newState;
     this.eventBus.emit("session:state_changed", newState);
   }
 
   private setupEventListeners(): void {
+    // When remote audio stream arrives, connect it to AudioPlaybackService
+    // for AnalyserNode-based lip-sync
+    this.eventBus.on("realtime:remote_stream", (payload: unknown) => {
+      const stream = payload as MediaStream;
+      this.audioPlayback.connectRemoteStream(stream);
+    });
+
     // Student started speaking
     this.eventBus.on("realtime:speech_started", () => {
       this.eventBus.emit("avatar:set_expression", "listening");
-
-      // If audio was playing, stop it (interruption)
-      this.audioPlayback.stop();
 
       // Start latency tracking for this turn
       this.latencyTracker.reset();
@@ -159,10 +187,9 @@ export class SessionManager {
       this.conversationStore.startAssistantMessage();
     });
 
-    // Audio delta — PCM chunk from the response
-    this.eventBus.on("realtime:audio_delta", (payload: unknown) => {
-      const event = payload as ResponseAudioDeltaEvent;
-
+    // Audio buffer started — marks when response audio actually begins playing.
+    // This is the key latency marker for Time to First Audio and End-to-End.
+    this.eventBus.on("realtime:audio_started", () => {
       if (this.isFirstAudioDelta) {
         this.isFirstAudioDelta = false;
         this.latencyTracker.markEnd(PipelineStage.TIME_TO_FIRST_AUDIO);
@@ -170,9 +197,11 @@ export class SessionManager {
         this.latencyTracker.markStart(PipelineStage.FULL_RESPONSE);
         this.eventBus.emit("avatar:set_expression", "talking");
       }
+    });
 
-      // Forward audio to playback
-      this.audioPlayback.enqueue(event.delta);
+    // Audio done — marks when response audio has finished
+    this.eventBus.on("realtime:audio_done", () => {
+      this.latencyTracker.markEnd(PipelineStage.FULL_RESPONSE);
     });
 
     // Transcript delta — text fragment of the response
@@ -183,7 +212,6 @@ export class SessionManager {
 
     // Response complete
     this.eventBus.on("realtime:response_done", () => {
-      this.latencyTracker.markEnd(PipelineStage.FULL_RESPONSE);
       this.latencyTracker.finalizeTurn();
 
       this.conversationStore.finalizeAssistantMessage();
@@ -192,7 +220,6 @@ export class SessionManager {
 
     // Response cancelled (interruption handled by Realtime API)
     this.eventBus.on("realtime:response_cancelled", () => {
-      this.audioPlayback.stop();
       this.conversationStore.cancelAssistantMessage();
       this.latencyTracker.reset();
       this.eventBus.emit("avatar:set_expression", "listening");

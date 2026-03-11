@@ -34,6 +34,23 @@ export class AudioPlaybackService {
     return this.analyserNode;
   }
 
+  /** Resume AudioContext (required after user gesture in browsers). */
+  public async resume(): Promise<void> {
+    if (this.audioContext.state === "suspended") {
+      await this.audioContext.resume();
+    }
+  }
+
+  /**
+   * Connect a remote MediaStream (from WebRTC) to the AnalyserNode
+   * so AudioAnalyser can read amplitude for lip-sync.
+   */
+  public connectRemoteStream(stream: MediaStream): void {
+    const source = this.audioContext.createMediaStreamSource(stream);
+    source.connect(this.analyserNode);
+    // Don't connect to destination — the <audio> element handles playback
+  }
+
   /**
    * Decodes a base64-encoded PCM16 (little-endian, mono, 24kHz) string
    * to a Float32Array with values in [-1, 1].

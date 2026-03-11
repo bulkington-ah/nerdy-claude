@@ -1,23 +1,21 @@
 import { RealtimeService } from "@/services/RealtimeService";
 import { EventBus } from "@/lib/EventBus";
 
-// Mock WebSocket
-class MockWebSocket {
-  static CONNECTING = 0;
-  static OPEN = 1;
-  static CLOSING = 2;
-  static CLOSED = 3;
+// Mock RTCPeerConnection and data channel
+let mockDataChannel: MockDataChannel;
 
-  readyState = MockWebSocket.CONNECTING;
-  url: string;
+class MockDataChannel {
+  readyState = "connecting";
+  label: string;
   onopen: ((ev: Event) => void) | null = null;
   onmessage: ((ev: MessageEvent) => void) | null = null;
   onerror: ((ev: Event) => void) | null = null;
-  onclose: ((ev: CloseEvent) => void) | null = null;
+  onclose: ((ev: Event) => void) | null = null;
   sentMessages: string[] = [];
 
-  constructor(url: string) {
-    this.url = url;
+  constructor(label: string) {
+    this.label = label;
+    mockDataChannel = this;
   }
 
   send(data: string): void {
@@ -25,12 +23,12 @@ class MockWebSocket {
   }
 
   close(): void {
-    this.readyState = MockWebSocket.CLOSED;
+    this.readyState = "closed";
   }
 
   // Test helpers
   simulateOpen(): void {
-    this.readyState = MockWebSocket.OPEN;
+    this.readyState = "open";
     this.onopen?.({} as Event);
   }
 
@@ -39,61 +37,93 @@ class MockWebSocket {
   }
 
   simulateClose(): void {
-    this.readyState = MockWebSocket.CLOSED;
-    this.onclose?.({ code: 1000, reason: "normal" } as CloseEvent);
-  }
-
-  simulateError(): void {
-    this.onerror?.({} as Event);
+    this.readyState = "closed";
+    this.onclose?.({} as Event);
   }
 }
 
-// Inject mock WebSocket globally
-(global as Record<string, unknown>).WebSocket = MockWebSocket;
+class MockRTCPeerConnection {
+  ontrack: ((ev: RTCTrackEvent) => void) | null = null;
+  localDescription: RTCSessionDescriptionInit | null = null;
+
+  addTrack = jest.fn();
+
+  createDataChannel(label: string): MockDataChannel {
+    return new MockDataChannel(label);
+  }
+
+  async createOffer(): Promise<RTCSessionDescriptionInit> {
+    return { type: "offer", sdp: "mock-sdp-offer" };
+  }
+
+  async setLocalDescription(desc: RTCSessionDescriptionInit): Promise<void> {
+    this.localDescription = desc;
+  }
+
+  async setRemoteDescription(_desc: RTCSessionDescriptionInit): Promise<void> {
+    // no-op
+  }
+
+  close(): void {
+    // no-op
+  }
+}
+
+(global as Record<string, unknown>).RTCPeerConnection = MockRTCPeerConnection;
+
+// Mock fetch for SDP exchange
+(global as Record<string, unknown>).fetch = jest.fn().mockResolvedValue({
+  ok: true,
+  text: () => Promise.resolve("mock-sdp-answer"),
+});
+
+// Mock MediaStream
+class MockMediaStream {
+  getAudioTracks(): { kind: string }[] {
+    return [{ kind: "audio" }];
+  }
+}
 
 describe("RealtimeService", () => {
   let service: RealtimeService;
   let eventBus: EventBus;
-  let mockWs: MockWebSocket;
 
   beforeEach(() => {
     eventBus = new EventBus();
     service = new RealtimeService(eventBus);
   });
 
-  function connectAndCaptureMockWs(): MockWebSocket {
-    service.connect("test-ephemeral-key");
-    // The constructor creates a WebSocket — grab it via the URL
-    mockWs = (service as unknown as { ws: MockWebSocket }).ws;
-    return mockWs;
+  async function connectAndGetDataChannel(): Promise<MockDataChannel> {
+    const stream = new MockMediaStream() as unknown as MediaStream;
+    await service.connect("test-ephemeral-key", stream);
+    return mockDataChannel;
   }
 
-  it("should connect to the Realtime API with ephemeral key", () => {
-    const ws = connectAndCaptureMockWs();
-    expect(ws.url).toContain("wss://api.openai.com/v1/realtime");
-    expect(ws.url).toContain("model=");
+  it("should create a data channel named oai-events", async () => {
+    const dc = await connectAndGetDataChannel();
+    expect(dc.label).toBe("oai-events");
   });
 
-  it("should send session.update with Socratic prompt on open", () => {
-    const ws = connectAndCaptureMockWs();
-    ws.simulateOpen();
+  it("should send session.update with Socratic prompt on data channel open", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
 
-    expect(ws.sentMessages).toHaveLength(1);
-    const msg = JSON.parse(ws.sentMessages[0]);
+    expect(dc.sentMessages).toHaveLength(1);
+    const msg = JSON.parse(dc.sentMessages[0]);
     expect(msg.type).toBe("session.update");
     expect(msg.session.instructions).toBeDefined();
     expect(msg.session.voice).toBeDefined();
     expect(msg.session.turn_detection).toBeDefined();
   });
 
-  it("should emit server events via EventBus", () => {
-    const ws = connectAndCaptureMockWs();
-    ws.simulateOpen();
+  it("should emit server events via EventBus", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
 
     const handler = jest.fn();
     eventBus.on("realtime:speech_started", handler);
 
-    ws.simulateMessage({
+    dc.simulateMessage({
       type: "input_audio_buffer.speech_started",
       audio_start_ms: 1000,
     });
@@ -106,102 +136,100 @@ describe("RealtimeService", () => {
     );
   });
 
-  it("should emit audio delta events for playback", () => {
-    const ws = connectAndCaptureMockWs();
-    ws.simulateOpen();
+  it("should emit audio_started event for output_audio_buffer.started", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
 
     const handler = jest.fn();
-    eventBus.on("realtime:audio_delta", handler);
+    eventBus.on("realtime:audio_started", handler);
 
-    ws.simulateMessage({
-      type: "response.audio.delta",
+    dc.simulateMessage({
+      type: "output_audio_buffer.started",
       response_id: "resp_1",
-      delta: "base64audiodata",
     });
 
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "response.audio.delta",
-        delta: "base64audiodata",
+        type: "output_audio_buffer.started",
       }),
     );
   });
 
-  it("should emit transcript delta events", () => {
-    const ws = connectAndCaptureMockWs();
-    ws.simulateOpen();
+  it("should emit transcript delta events (GA format)", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
 
     const handler = jest.fn();
     eventBus.on("realtime:transcript_delta", handler);
 
-    ws.simulateMessage({
-      type: "response.audio_transcript.delta",
+    dc.simulateMessage({
+      type: "response.output_audio_transcript.delta",
       response_id: "resp_1",
       delta: "Hello ",
     });
 
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "response.audio_transcript.delta",
+        type: "response.output_audio_transcript.delta",
         delta: "Hello ",
       }),
     );
   });
 
-  it("should send audio buffer append events", () => {
-    const ws = connectAndCaptureMockWs();
-    ws.simulateOpen();
+  it("should send SDP offer to OpenAI with ephemeral key", async () => {
+    const stream = new MockMediaStream() as unknown as MediaStream;
+    await service.connect("test-ephemeral-key", stream);
 
-    // Clear the session.update message
-    ws.sentMessages = [];
-
-    service.sendAudio("base64pcmdata");
-
-    expect(ws.sentMessages).toHaveLength(1);
-    const msg = JSON.parse(ws.sentMessages[0]);
-    expect(msg.type).toBe("input_audio_buffer.append");
-    expect(msg.audio).toBe("base64pcmdata");
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("api.openai.com/v1/realtime"),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-ephemeral-key",
+          "Content-Type": "application/sdp",
+        }),
+      }),
+    );
   });
 
-  it("should not send audio when disconnected", () => {
-    // Not connected yet
+  it("should not throw when sendAudio is called (no-op with WebRTC)", () => {
     service.sendAudio("data");
-    // Should not throw, just silently ignore
+    // Should not throw — sendAudio is a no-op with WebRTC
   });
 
-  it("should emit connection state events", () => {
-    const ws = connectAndCaptureMockWs();
+  it("should emit connection state events", async () => {
+    const dc = await connectAndGetDataChannel();
 
     const connectedHandler = jest.fn();
     const disconnectedHandler = jest.fn();
     eventBus.on("realtime:connected", connectedHandler);
     eventBus.on("realtime:disconnected", disconnectedHandler);
 
-    ws.simulateOpen();
+    dc.simulateOpen();
     expect(connectedHandler).toHaveBeenCalled();
 
-    ws.simulateClose();
+    dc.simulateClose();
     expect(disconnectedHandler).toHaveBeenCalled();
   });
 
-  it("should disconnect and clean up", () => {
-    const ws = connectAndCaptureMockWs();
-    ws.simulateOpen();
+  it("should disconnect and clean up", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
 
     service.disconnect();
-    expect(ws.readyState).toBe(MockWebSocket.CLOSED);
+    expect(dc.readyState).toBe("closed");
   });
 
-  it("should report connection state via isConnected()", () => {
+  it("should report connection state via isConnected()", async () => {
     expect(service.isConnected()).toBe(false);
 
-    const ws = connectAndCaptureMockWs();
+    const dc = await connectAndGetDataChannel();
     expect(service.isConnected()).toBe(false);
 
-    ws.simulateOpen();
+    dc.simulateOpen();
     expect(service.isConnected()).toBe(true);
 
-    ws.simulateClose();
+    dc.simulateClose();
     expect(service.isConnected()).toBe(false);
   });
 });

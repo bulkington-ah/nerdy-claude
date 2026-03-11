@@ -66,12 +66,8 @@ export default function TutorSession(): React.JSX.Element {
       setSessionState("thinking");
     };
 
-    const onAudioDelta = (): void => {
+    const onAudioStarted = (): void => {
       setSessionState("speaking");
-      // Update in-progress text
-      if (managerRef.current) {
-        setMessages(managerRef.current.getTranscript());
-      }
     };
 
     bus.on("session:state_changed", onStateChanged);
@@ -79,7 +75,7 @@ export default function TutorSession(): React.JSX.Element {
     bus.on("realtime:response_done", onResponseDone);
     bus.on("realtime:speech_started", onSpeechStarted);
     bus.on("realtime:speech_stopped", onSpeechStopped);
-    bus.on("realtime:audio_delta", onAudioDelta);
+    bus.on("realtime:audio_started", onAudioStarted);
 
     return () => {
       bus.off("session:state_changed", onStateChanged);
@@ -87,7 +83,7 @@ export default function TutorSession(): React.JSX.Element {
       bus.off("realtime:response_done", onResponseDone);
       bus.off("realtime:speech_started", onSpeechStarted);
       bus.off("realtime:speech_stopped", onSpeechStopped);
-      bus.off("realtime:audio_delta", onAudioDelta);
+      bus.off("realtime:audio_started", onAudioStarted);
     };
   }, []);
 

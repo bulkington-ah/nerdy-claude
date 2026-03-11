@@ -23,10 +23,8 @@ describe("POST /api/session", () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        client_secret: {
-          value: "ek_test_ephemeral_key",
-          expires_at: 1700000000,
-        },
+        value: "ek_test_ephemeral_key",
+        expires_at: 1700000000,
       }),
     });
 
@@ -37,21 +35,19 @@ describe("POST /api/session", () => {
     expect(result.body.expiresAt).toBe(1700000000);
   });
 
-  it("should call OpenAI with correct parameters", async () => {
+  it("should call OpenAI client_secrets endpoint with correct parameters", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        client_secret: {
-          value: "ek_test",
-          expires_at: 1700000000,
-        },
+        value: "ek_test",
+        expires_at: 1700000000,
       }),
     });
 
     await createSessionHandler();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://api.openai.com/v1/realtime/sessions",
+      "https://api.openai.com/v1/realtime/client_secrets",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
@@ -61,11 +57,13 @@ describe("POST /api/session", () => {
       }),
     );
 
-    // Verify the body includes model and voice
+    // Verify the body includes session config
     const callArgs = mockFetch.mock.calls[0][1];
     const body = JSON.parse(callArgs.body);
-    expect(body.model).toBeDefined();
-    expect(body.voice).toBeDefined();
+    expect(body.session).toBeDefined();
+    expect(body.session.type).toBe("realtime");
+    expect(body.session.model).toBeDefined();
+    expect(body.session.audio.output.voice).toBeDefined();
   });
 
   it("should return 500 when OPENAI_API_KEY is missing", async () => {
@@ -81,6 +79,7 @@ describe("POST /api/session", () => {
       ok: false,
       status: 401,
       statusText: "Unauthorized",
+      text: async () => "Unauthorized",
     });
 
     const result = await createSessionHandler();
