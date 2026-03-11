@@ -3,7 +3,6 @@ import { LatencyTracker } from "@/lib/LatencyTracker";
 import { ConversationStore } from "@/lib/ConversationStore";
 import { AudioPlaybackService } from "@/services/AudioPlaybackService";
 import { RealtimeService } from "@/services/RealtimeService";
-import { AvatarService } from "@/services/AvatarService";
 import { AudioAnalyser } from "@/lib/AudioAnalyser";
 import { PipelineStage, LatencyMetrics } from "@/types/pipeline";
 import { SessionState, Message } from "@/types/conversation";
@@ -26,8 +25,7 @@ export class SessionManager {
   private conversationStore: ConversationStore;
   private audioPlayback: AudioPlaybackService;
   private realtimeService: RealtimeService;
-  private avatarService: AvatarService;
-  private audioAnalyser: AudioAnalyser | null = null;
+  private audioAnalyser: AudioAnalyser;
   private micStream: MediaStream | null = null;
 
   private state: SessionState = "idle";
@@ -39,11 +37,11 @@ export class SessionManager {
     this.conversationStore = new ConversationStore();
     this.audioPlayback = new AudioPlaybackService(eventBus);
     this.realtimeService = new RealtimeService(eventBus);
-    this.avatarService = new AvatarService(eventBus);
 
-    // Wire up AudioAnalyser from playback's AnalyserNode
+    // AudioAnalyser wraps the playback service's AnalyserNode.
+    // Exposed via getAudioAnalyser() so AvatarCanvas can wire it
+    // to the AvatarService instance that owns the Rive canvas.
     this.audioAnalyser = new AudioAnalyser(this.audioPlayback.getAnalyserNode());
-    this.avatarService.setAudioAnalyser(this.audioAnalyser);
 
     this.setupEventListeners();
   }
@@ -71,6 +69,11 @@ export class SessionManager {
   /** Get average latency metrics. */
   public getAverageMetrics(): LatencyMetrics {
     return this.latencyTracker.getAverages();
+  }
+
+  /** Get the AudioAnalyser for connecting to AvatarService lip-sync. */
+  public getAudioAnalyser(): AudioAnalyser {
+    return this.audioAnalyser;
   }
 
   /**
@@ -132,7 +135,6 @@ export class SessionManager {
   public dispose(): void {
     this.endSession();
     this.audioPlayback.dispose();
-    this.avatarService.dispose();
     this.state = "idle";
   }
 

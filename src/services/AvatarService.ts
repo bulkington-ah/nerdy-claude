@@ -2,8 +2,22 @@ import { EventBus } from "@/lib/EventBus";
 import { AudioAnalyser } from "@/lib/AudioAnalyser";
 import { AvatarExpression, AvatarInputs } from "@/types/avatar";
 
+// Colors for each expression state
+const STATE_COLORS: Record<AvatarExpression, string> = {
+  idle: "#6B7280",
+  listening: "#10B981",
+  thinking: "#F59E0B",
+  talking: "#3B82F6",
+};
+
+const FACE_COLOR = "#FCD34D";
+const FACE_SHADOW = "#F59E0B";
+const EYE_COLOR = "#1F2937";
+const MOUTH_COLOR = "#DC2626";
+const MOUTH_INTERIOR = "#7F1D1D";
+
 /**
- * Manages the Rive avatar state machine and lip-sync.
+ * Manages a procedural canvas avatar with audio-driven lip-sync.
  * Listens for expression change events via EventBus and reads audio amplitude
  * from AudioAnalyser each frame to drive mouth movement.
  */
@@ -11,13 +25,23 @@ export class AvatarService {
   private eventBus: EventBus;
   private expression: AvatarExpression = "idle";
   private mouthOpen: number = 0;
+  private smoothedMouth: number = 0;
   private audioAnalyser: AudioAnalyser | null = null;
   private animationFrameId: number | null = null;
   private disposed: boolean = false;
+  private canvas: HTMLCanvasElement | null = null;
+  private ctx: CanvasRenderingContext2D | null = null;
 
-  // Rive instance and state machine inputs
-  private riveInstance: unknown = null;
-  private riveInputs: Map<string, { value: number | boolean }> = new Map();
+  // Animation state
+  private blinkTimer: number = 0;
+  private isBlinking: boolean = false;
+  private frameCount: number = 0;
+
+  // Deferred idle: hold "talking" until audio actually stops
+  private pendingIdle: boolean = false;
+  private silenceFrames: number = 0;
+  private static readonly SILENCE_THRESHOLD = 0.01;
+  private static readonly SILENCE_FRAMES_REQUIRED = 20; // ~333ms at 60fps
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
@@ -36,6 +60,15 @@ export class AvatarService {
 
   /** Set the avatar expression directly. */
   public setExpression(expression: AvatarExpression): void {
+    // When switching from talking to idle, defer until audio actually stops
+    if (expression === "idle" && this.expression === "talking") {
+      this.pendingIdle = true;
+      this.silenceFrames = 0;
+      return;
+    }
+    // Any other transition cancels pending idle
+    this.pendingIdle = false;
+    this.silenceFrames = 0;
     this.expression = expression;
   }
 
@@ -57,67 +90,246 @@ export class AvatarService {
     } else {
       this.mouthOpen = 0;
     }
+    // Smooth the mouth value to avoid jitter
+    this.smoothedMouth += (this.mouthOpen - this.smoothedMouth) * 0.3;
   }
 
   /**
-   * Load the Rive animation into a canvas element.
-   * Starts the animation loop for lip-sync.
+   * Initialize the canvas for procedural avatar rendering.
+   * Starts the animation loop.
    */
-  public async loadRive(canvas: HTMLCanvasElement, riveSrc: string): Promise<void> {
-    const { Rive } = await import("@rive-app/canvas");
-
-    const stateMachineName = "State Machine 1";
-
-    return new Promise<void>((resolve) => {
-      const rive = new Rive({
-        src: riveSrc,
-        canvas,
-        autoplay: true,
-        stateMachines: stateMachineName,
-        onLoad: () => {
-          // Grab state machine inputs by name
-          const inputs = rive.stateMachineInputs(stateMachineName) ?? [];
-          for (const input of inputs) {
-            this.riveInputs.set(input.name, input as { value: number | boolean });
-          }
-          this.startAnimationLoop();
-          resolve();
-        },
-      });
-      this.riveInstance = rive;
-    });
+  public initCanvas(canvas: HTMLCanvasElement): void {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.startAnimationLoop();
   }
 
-  /** Start the requestAnimationFrame loop for lip-sync updates. */
+  /** Start the requestAnimationFrame loop. */
   private startAnimationLoop(): void {
     const tick = (): void => {
       if (this.disposed) return;
       this.updateMouthOpen();
-      this.applyRiveInputs();
+      this.updatePendingIdle();
+      this.updateBlink();
+      this.drawFrame();
+      this.frameCount++;
       this.animationFrameId = requestAnimationFrame(tick);
     };
     this.animationFrameId = requestAnimationFrame(tick);
   }
 
-  /** Push current state to Rive state machine inputs. */
-  private applyRiveInputs(): void {
-    // Mouth amplitude → "Mouth" input (Number 0-1)
-    const mouthInput = this.riveInputs.get("Mouth");
-    if (mouthInput) {
-      mouthInput.value = this.mouthOpen;
+  /** Check if deferred idle should now fire (audio has gone silent). */
+  private updatePendingIdle(): void {
+    if (!this.pendingIdle) return;
+
+    if (this.mouthOpen < AvatarService.SILENCE_THRESHOLD) {
+      this.silenceFrames++;
+    } else {
+      this.silenceFrames = 0;
     }
 
-    // Expression → "talk" (Boolean) and "idle" (Boolean)
-    // Map: talking → talk=true, idle=false
-    //       listening/thinking/idle → talk=false, idle=true
-    const talkInput = this.riveInputs.get("talk");
-    const idleInput = this.riveInputs.get("idle");
-    if (talkInput) {
-      talkInput.value = this.expression === "talking";
+    if (this.silenceFrames >= AvatarService.SILENCE_FRAMES_REQUIRED) {
+      this.pendingIdle = false;
+      this.silenceFrames = 0;
+      this.expression = "idle";
     }
-    if (idleInput) {
-      idleInput.value = this.expression !== "talking";
+  }
+
+  /** Periodic blink logic. */
+  private updateBlink(): void {
+    this.blinkTimer++;
+    // Blink every ~3-5 seconds (random interval)
+    if (!this.isBlinking && this.blinkTimer > 180 + Math.random() * 120) {
+      this.isBlinking = true;
+      this.blinkTimer = 0;
     }
+    // Blink lasts ~6 frames
+    if (this.isBlinking && this.blinkTimer > 6) {
+      this.isBlinking = false;
+      this.blinkTimer = 0;
+    }
+  }
+
+  /** Draw the full avatar frame. */
+  private drawFrame(): void {
+    const ctx = this.ctx;
+    const canvas = this.canvas;
+    if (!ctx || !canvas) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radius = Math.min(w, h) * 0.35;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // State glow ring
+    this.drawGlowRing(ctx, cx, cy, radius, STATE_COLORS[this.expression]);
+
+    // Face circle with gradient
+    this.drawFace(ctx, cx, cy, radius);
+
+    // Eyes
+    this.drawEyes(ctx, cx, cy, radius);
+
+    // Mouth
+    this.drawMouth(ctx, cx, cy, radius);
+
+    // State label
+    this.drawStateLabel(ctx, cx, h, radius);
+  }
+
+  private drawGlowRing(
+    ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, radius: number, color: string,
+  ): void {
+    // Pulsing glow
+    const pulse = 0.6 + 0.4 * Math.sin(this.frameCount * 0.03);
+    const glowRadius = radius + 12;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, glowRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.globalAlpha = pulse;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 20;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawFace(
+    ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, radius: number,
+  ): void {
+    const gradient = ctx.createRadialGradient(
+      cx - radius * 0.2, cy - radius * 0.2, radius * 0.1,
+      cx, cy, radius,
+    );
+    gradient.addColorStop(0, FACE_COLOR);
+    gradient.addColorStop(1, FACE_SHADOW);
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+
+    // Subtle border
+    ctx.strokeStyle = "#D97706";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  private drawEyes(
+    ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, radius: number,
+  ): void {
+    const eyeOffsetX = radius * 0.3;
+    const eyeY = cy - radius * 0.15;
+
+    // Eye size varies by expression
+    let eyeWidth = radius * 0.12;
+    let eyeHeight = radius * 0.15;
+
+    if (this.expression === "listening") {
+      eyeHeight = radius * 0.18; // wider, attentive
+    } else if (this.expression === "thinking") {
+      eyeHeight = radius * 0.08; // squinting
+    }
+
+    // Blink: squash eyes
+    if (this.isBlinking) {
+      eyeHeight = radius * 0.02;
+    }
+
+    // Left eye
+    this.drawEye(ctx, cx - eyeOffsetX, eyeY, eyeWidth, eyeHeight);
+    // Right eye
+    this.drawEye(ctx, cx + eyeOffsetX, eyeY, eyeWidth, eyeHeight);
+  }
+
+  private drawEye(
+    ctx: CanvasRenderingContext2D,
+    x: number, y: number, w: number, h: number,
+  ): void {
+    ctx.beginPath();
+    ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
+    ctx.fillStyle = EYE_COLOR;
+    ctx.fill();
+
+    // Eye highlight
+    if (h > w * 0.3) {
+      ctx.beginPath();
+      ctx.ellipse(x + w * 0.25, y - h * 0.25, w * 0.3, h * 0.3, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "white";
+      ctx.fill();
+    }
+  }
+
+  private drawMouth(
+    ctx: CanvasRenderingContext2D,
+    cx: number, cy: number, radius: number,
+  ): void {
+    const mouthY = cy + radius * 0.3;
+    const mouthWidth = radius * 0.35;
+
+    if (this.expression === "talking") {
+      // Open mouth driven by audio amplitude
+      const openAmount = Math.max(0.05, this.smoothedMouth);
+      const mouthHeight = radius * 0.4 * openAmount;
+
+      // Mouth shape: ellipse that grows vertically with amplitude
+      ctx.beginPath();
+      ctx.ellipse(cx, mouthY, mouthWidth * (0.6 + openAmount * 0.4), mouthHeight, 0, 0, Math.PI * 2);
+      ctx.fillStyle = MOUTH_INTERIOR;
+      ctx.fill();
+
+      // Lip outline
+      ctx.strokeStyle = MOUTH_COLOR;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+    } else if (this.expression === "thinking") {
+      // Small "o" shape
+      ctx.beginPath();
+      ctx.ellipse(cx, mouthY, radius * 0.08, radius * 0.1, 0, 0, Math.PI * 2);
+      ctx.fillStyle = MOUTH_INTERIOR;
+      ctx.fill();
+      ctx.strokeStyle = MOUTH_COLOR;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+    } else if (this.expression === "listening") {
+      // Slight smile
+      ctx.beginPath();
+      ctx.arc(cx, mouthY - radius * 0.05, mouthWidth * 0.6, 0.1 * Math.PI, 0.9 * Math.PI, false);
+      ctx.strokeStyle = MOUTH_COLOR;
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.stroke();
+
+    } else {
+      // Idle: neutral line with slight curve
+      ctx.beginPath();
+      ctx.arc(cx, mouthY, mouthWidth * 0.5, 0.05 * Math.PI, 0.95 * Math.PI, false);
+      ctx.strokeStyle = MOUTH_COLOR;
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.stroke();
+    }
+  }
+
+  private drawStateLabel(
+    ctx: CanvasRenderingContext2D,
+    cx: number, h: number, radius: number,
+  ): void {
+    const labelY = h / 2 + radius + 30;
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = STATE_COLORS[this.expression];
+    ctx.fillText(this.expression.toUpperCase(), cx, labelY);
   }
 
   /** Clean up resources. */
@@ -127,12 +339,11 @@ export class AvatarService {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
     }
-    if (this.riveInstance && typeof (this.riveInstance as { cleanup: () => void }).cleanup === "function") {
-      (this.riveInstance as { cleanup: () => void }).cleanup();
-    }
-    this.riveInstance = null;
+    this.canvas = null;
+    this.ctx = null;
     this.expression = "idle";
     this.mouthOpen = 0;
+    this.smoothedMouth = 0;
   }
 
   private setupEventListeners(): void {

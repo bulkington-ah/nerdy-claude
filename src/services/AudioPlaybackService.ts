@@ -10,7 +10,11 @@ export class AudioPlaybackService {
   private audioContext: AudioContext;
   private analyserNode: AnalyserNode;
   private gainNode: GainNode;
+  private silentGainNode: GainNode;
   private eventBus: EventBus;
+
+  // Remote stream source (stored to prevent GC)
+  private remoteStreamSource: MediaStreamAudioSourceNode | null = null;
 
   // Gapless scheduling state
   private scheduledSources: AudioBufferSourceNode[] = [];
@@ -24,7 +28,13 @@ export class AudioPlaybackService {
     this.analyserNode = this.audioContext.createAnalyser();
     this.gainNode = this.audioContext.createGain();
 
-    // Route: source → gain → analyser → destination
+    // Silent gain node — routes analyser to destination at zero volume.
+    // Chrome won't process audio through nodes that don't reach a destination,
+    // so we need this to keep getByteTimeDomainData() returning real data.
+    this.silentGainNode = this.audioContext.createGain();
+    this.silentGainNode.gain.value = 0;
+
+    // Route: source → gain → analyser → destination (for enqueue path)
     this.gainNode.connect(this.analyserNode);
     this.analyserNode.connect(this.audioContext.destination);
   }
@@ -44,11 +54,21 @@ export class AudioPlaybackService {
   /**
    * Connect a remote MediaStream (from WebRTC) to the AnalyserNode
    * so AudioAnalyser can read amplitude for lip-sync.
+   * The <audio> element handles actual playback — we only route through
+   * the analyser for amplitude readings, not to the destination.
    */
   public connectRemoteStream(stream: MediaStream): void {
-    const source = this.audioContext.createMediaStreamSource(stream);
-    source.connect(this.analyserNode);
-    // Don't connect to destination — the <audio> element handles playback
+    console.log("[AudioPlayback] connectRemoteStream called, tracks:", stream.getAudioTracks().length);
+
+    // Rewire: analyser → silentGain → destination (muted, but keeps Chrome processing)
+    // instead of analyser → destination (which would double-play audio)
+    this.analyserNode.disconnect();
+    this.analyserNode.connect(this.silentGainNode);
+    this.silentGainNode.connect(this.audioContext.destination);
+
+    // Store reference to prevent garbage collection
+    this.remoteStreamSource = this.audioContext.createMediaStreamSource(stream);
+    this.remoteStreamSource.connect(this.analyserNode);
   }
 
   /**
@@ -121,6 +141,10 @@ export class AudioPlaybackService {
   /** Release all resources. */
   public dispose(): void {
     this.stop();
+    if (this.remoteStreamSource) {
+      this.remoteStreamSource.disconnect();
+      this.remoteStreamSource = null;
+    }
     this.audioContext.close();
   }
 

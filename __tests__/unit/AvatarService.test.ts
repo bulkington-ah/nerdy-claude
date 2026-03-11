@@ -5,25 +5,6 @@ import { AudioAnalyser } from "@/lib/AudioAnalyser";
 // Mock AudioAnalyser
 jest.mock("@/lib/AudioAnalyser");
 
-// Mock Rive — we can't import the actual package in tests
-const mockStateMachineInput = {
-  value: 0 as number | boolean,
-};
-
-const mockRiveInstance = {
-  cleanup: jest.fn(),
-};
-
-jest.mock("@rive-app/canvas", () => ({
-  Rive: jest.fn().mockImplementation((config: { onLoad?: () => void }) => {
-    if (config.onLoad) {
-      setTimeout(() => config.onLoad!(), 0);
-    }
-    return mockRiveInstance;
-  }),
-  StateMachineInput: jest.fn(),
-}));
-
 describe("AvatarService", () => {
   let service: AvatarService;
   let eventBus: EventBus;
@@ -90,7 +71,30 @@ describe("AvatarService", () => {
 
   it("should clean up on dispose", () => {
     service.dispose();
-    // Should not throw
     expect(service.getExpression()).toBe("idle");
+  });
+
+  it("should initialize canvas and start animation loop", () => {
+    const canvas = {
+      getContext: jest.fn().mockReturnValue({
+        clearRect: jest.fn(),
+        beginPath: jest.fn(),
+        arc: jest.fn(),
+        ellipse: jest.fn(),
+        fill: jest.fn(),
+        stroke: jest.fn(),
+        save: jest.fn(),
+        restore: jest.fn(),
+        createRadialGradient: jest.fn().mockReturnValue({
+          addColorStop: jest.fn(),
+        }),
+        fillText: jest.fn(),
+      }),
+      width: 300,
+      height: 300,
+    } as unknown as HTMLCanvasElement;
+
+    service.initCanvas(canvas);
+    expect(canvas.getContext).toHaveBeenCalledWith("2d");
   });
 });

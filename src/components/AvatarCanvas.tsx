@@ -3,25 +3,24 @@
 import { useRef, useEffect } from "react";
 import { AvatarService } from "@/services/AvatarService";
 import { EventBus } from "@/lib/EventBus";
+import { AudioAnalyser } from "@/lib/AudioAnalyser";
 
 interface AvatarCanvasProps {
   eventBus: EventBus;
-  riveSrc?: string;
+  audioAnalyser?: AudioAnalyser | null;
   width?: number;
   height?: number;
-  onServiceReady?: (service: AvatarService) => void;
 }
 
 /**
- * React wrapper for the Rive canvas avatar.
+ * React wrapper for the procedural canvas avatar.
  * Initializes AvatarService with the canvas ref and cleans up on unmount.
  */
 export default function AvatarCanvas({
   eventBus,
-  riveSrc = "/tutor-avatar.riv",
-  width = 400,
-  height = 400,
-  onServiceReady,
+  audioAnalyser,
+  width = 300,
+  height = 300,
 }: AvatarCanvasProps): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const serviceRef = useRef<AvatarService | null>(null);
@@ -33,20 +32,18 @@ export default function AvatarCanvas({
     const service = new AvatarService(eventBus);
     serviceRef.current = service;
 
-    service
-      .loadRive(canvas, riveSrc)
-      .then(() => {
-        onServiceReady?.(service);
-      })
-      .catch(() => {
-        // Rive load failed — avatar will show static canvas
-      });
+    // Wire up AudioAnalyser immediately if already available
+    if (audioAnalyser) {
+      service.setAudioAnalyser(audioAnalyser);
+    }
+
+    service.initCanvas(canvas);
 
     return () => {
       service.dispose();
       serviceRef.current = null;
     };
-  }, [eventBus, riveSrc, onServiceReady]);
+  }, [eventBus, audioAnalyser]);
 
   return (
     <canvas

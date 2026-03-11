@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { EventBus } from "@/lib/EventBus";
 import { SessionManager } from "@/services/SessionManager";
+import { AudioAnalyser } from "@/lib/AudioAnalyser";
 import { Message, SessionState } from "@/types/conversation";
 import { LatencyMetrics } from "@/types/pipeline";
 import AvatarCanvas from "@/components/AvatarCanvas";
@@ -23,11 +24,13 @@ export default function TutorSession(): React.JSX.Element {
   const [currentAssistantText, setCurrentAssistantText] = useState("");
   const [currentMetrics, setCurrentMetrics] = useState<LatencyMetrics | null>(null);
   const [averageMetrics, setAverageMetrics] = useState<LatencyMetrics | null>(null);
+  const [audioAnalyser, setAudioAnalyser] = useState<AudioAnalyser | null>(null);
 
   // Initialize SessionManager once
   useEffect(() => {
     const manager = new SessionManager(eventBusRef.current);
     managerRef.current = manager;
+    setAudioAnalyser(manager.getAudioAnalyser());
 
     return () => {
       manager.dispose();
@@ -107,6 +110,7 @@ export default function TutorSession(): React.JSX.Element {
       <div className="relative">
         <AvatarCanvas
           eventBus={eventBusRef.current}
+          audioAnalyser={audioAnalyser}
           width={300}
           height={300}
         />
