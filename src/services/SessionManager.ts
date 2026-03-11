@@ -7,7 +7,7 @@ import { AudioAnalyser } from "@/lib/AudioAnalyser";
 import { PipelineStage, LatencyMetrics } from "@/types/pipeline";
 import { SessionState, Message } from "@/types/conversation";
 import {
-  ResponseAudioTranscriptDeltaEvent,
+  ResponseOutputAudioTranscriptDeltaEvent,
 } from "@/types/realtime";
 
 /**
@@ -40,7 +40,7 @@ export class SessionManager {
 
     // AudioAnalyser wraps the playback service's AnalyserNode.
     // Exposed via getAudioAnalyser() so AvatarCanvas can wire it
-    // to the AvatarService instance that owns the Rive canvas.
+    // to the AvatarService instance that owns the procedural canvas avatar.
     this.audioAnalyser = new AudioAnalyser(this.audioPlayback.getAnalyserNode());
 
     this.setupEventListeners();
@@ -208,7 +208,7 @@ export class SessionManager {
 
     // Transcript delta — text fragment of the response
     this.eventBus.on("realtime:transcript_delta", (payload: unknown) => {
-      const event = payload as ResponseAudioTranscriptDeltaEvent;
+      const event = payload as ResponseOutputAudioTranscriptDeltaEvent;
       this.conversationStore.appendAssistantDelta(event.delta);
     });
 

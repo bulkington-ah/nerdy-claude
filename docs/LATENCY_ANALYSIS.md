@@ -5,9 +5,9 @@
 | Stage | Measurement | Target | Max Acceptable |
 |-------|-------------|--------|----------------|
 | Input Processing | speech_stopped → response.created | 200ms | 400ms |
-| Time to First Audio | response.created → first audio.delta | 300ms | 500ms |
-| Full Response | first audio.delta → response.done | 2000ms | 3000ms |
-| End-to-End | speech_stopped → first audio plays | 500ms | 1000ms |
+| Time to First Audio | response.created → output_audio_buffer.started | 300ms | 500ms |
+| Full Response | output_audio_buffer.started → response.output_audio.done | 2000ms | 3000ms |
+| End-to-End | speech_stopped → output_audio_buffer.started | 500ms | 1000ms |
 
 ## Why This Architecture is Fast
 
@@ -21,7 +21,7 @@ Total: 700-1300ms
 
 Our approach:
 ```
-[Mic] → [OpenAI Realtime API: 300-500ms all-in-one] → [Speaker]
+[Mic track] → [OpenAI Realtime API: 300-500ms all-in-one] → [Remote audio track] → [Speaker]
 Total: 300-500ms
 ```
 
@@ -29,21 +29,22 @@ The OpenAI Realtime API processes STT, LLM, and TTS in a single server-side pipe
 
 ### Zero-Latency Avatar
 
-Rive canvas renders client-side at 60fps. Lip-sync reads from Web Audio AnalyserNode — no network call, no API, just a `getByteTimeDomainData()` read per frame (~0.1ms).
+Rive canvas renders client-side at 60fps. Lip-sync reads from a Web Audio `AnalyserNode` fed by the remote WebRTC stream, with no extra network hop.
 
 ### No Server Proxy
 
-Browser connects directly to OpenAI via WebSocket using an ephemeral key. Audio never passes through our server — only the one-time key exchange does.
+Browser connects directly to OpenAI over WebRTC using a short-lived client secret. Audio never passes through our server; the server only exchanges the permanent API key for that client secret.
 
 ## How We Measure
 
-**LatencyTracker** records `performance.now()` at each Realtime API event:
+`LatencyTracker` records `performance.now()` at each Realtime API event:
 
 ```
-speech_stopped         → markStart(INPUT_PROCESSING), markStart(END_TO_END)
-response.created       → markEnd(INPUT_PROCESSING), markStart(TIME_TO_FIRST_AUDIO)
-first audio.delta      → markEnd(TIME_TO_FIRST_AUDIO), markEnd(END_TO_END), markStart(FULL_RESPONSE)
-response.done          → markEnd(FULL_RESPONSE), finalizeTurn()
+speech_stopped              → markStart(INPUT_PROCESSING), markStart(END_TO_END)
+response.created            → markEnd(INPUT_PROCESSING), markStart(TIME_TO_FIRST_AUDIO)
+output_audio_buffer.started → markEnd(TIME_TO_FIRST_AUDIO), markEnd(END_TO_END), markStart(FULL_RESPONSE)
+response.output_audio.done  → markEnd(FULL_RESPONSE)
+response.done               → finalizeTurn()
 ```
 
 Metrics are displayed in the LatencyOverlay HUD, color-coded:
@@ -53,7 +54,12 @@ Metrics are displayed in the LatencyOverlay HUD, color-coded:
 
 ## Optimizations Applied
 
-1. **Gapless audio scheduling** — AudioBufferSourceNodes scheduled with precise start times to avoid gaps between chunks
+1. **Collapsed realtime model** — STT, reasoning, and speech synthesis stay inside a single OpenAI realtime session
 2. **Short system prompt** — Socratic prompt instructs 15-40 word responses to minimize generation time
-3. **Server VAD** — OpenAI handles voice activity detection server-side, avoiding client-side processing delay
-4. **ScriptProcessorNode** — Direct PCM16 conversion without resampling (mic captured at 24kHz)
+3. **Server VAD** — OpenAI handles voice activity detection server-side, avoiding extra client-side coordination
+4. **WebRTC media transport** — Mic audio and response audio move on native media tracks instead of a manual PCM append/commit loop
+
+## Notes
+
+- The current `endToEndMs` metric is anchored to `output_audio_buffer.started`, which is closer to audible playback than the old `audio.delta` proxy but is still event-driven rather than speaker-measured.
+- `AudioPlaybackService` still contains PCM16 scheduling helpers from an earlier prototype, but the live session path uses the remote WebRTC stream for playback and lip-sync analysis.

@@ -242,13 +242,13 @@ describe("SessionManager", () => {
     });
 
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.audio_transcript.delta",
+      type: "response.output_audio_transcript.delta",
       response_id: "resp_1",
       delta: "Hello ",
     });
 
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.audio_transcript.delta",
+      type: "response.output_audio_transcript.delta",
       response_id: "resp_1",
       delta: "there!",
     });

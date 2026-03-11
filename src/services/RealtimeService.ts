@@ -133,7 +133,8 @@ export class RealtimeService {
 
   public sendAudio(_base64Audio: string): void {
     // With WebRTC, audio is sent via the media track automatically.
-    // This method is kept for interface compatibility but is a no-op.
+    // This legacy method remains only for compatibility with the pre-WebRTC
+    // prototype and is a no-op in the current transport.
   }
 
   public isConnected(): boolean {

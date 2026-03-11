@@ -1,8 +1,11 @@
 import { AUDIO_SAMPLE_RATE } from "@/config/constants";
 
 /**
- * Captures microphone audio, resamples to 24kHz PCM16, and sends
- * base64-encoded chunks via a callback (for input_audio_buffer.append events).
+ * Legacy utility from the pre-WebRTC prototype.
+ *
+ * The current session flow sends mic audio as a WebRTC media track via
+ * SessionManager -> RealtimeService, so this class is not used at runtime.
+ * It is kept as a fallback/reference implementation for manual PCM streaming.
  */
 export class MicCapture {
   private stream: MediaStream | null = null;
@@ -12,7 +15,7 @@ export class MicCapture {
   private onAudioChunk: ((base64Pcm: string) => void) | null = null;
 
   /**
-   * Start capturing mic audio.
+   * Start capturing mic audio for the legacy PCM streaming path.
    * @param onAudioChunk Callback invoked with base64-encoded PCM16 chunks.
    */
   public async start(onAudioChunk: (base64Pcm: string) => void): Promise<void> {

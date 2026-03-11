@@ -1,5 +1,7 @@
 # Phase 4: Rive Avatar + Lip-sync — Implementation Report
 
+> Historical snapshot: this report was written before the current procedural canvas avatar and WebRTC transport were wired up. The live UI still uses `AvatarService`, but it now renders directly to a canvas instead of driving a Rive asset. See `docs/ARCHITECTURE.md` for the current runtime view.
+
 ## What was implemented
 
 ### AudioAnalyser (`src/lib/AudioAnalyser.ts`)
@@ -15,7 +17,7 @@ Manages avatar state and Rive integration:
 - `AvatarInputs` struct: `mouthOpen` (0-1) + 4 boolean expression flags
 - Reads amplitude from AudioAnalyser each frame via `requestAnimationFrame`
 - Listens for `avatar:set_expression` events via EventBus
-- Loads Rive animation with `TutorStateMachine` state machine
+- Loads the Rive animation and applies values to named state-machine inputs
 - Clean dispose: cancels animation frame, cleans up Rive instance
 
 ### AvatarCanvas (`src/components/AvatarCanvas.tsx`)
@@ -30,7 +32,7 @@ React wrapper component:
 1. **AudioAnalyser is decoupled from AvatarService**: AudioAnalyser wraps the raw AnalyserNode; AvatarService consumes it via `setAudioAnalyser()`. This keeps each class focused and testable independently.
 2. **Expression as simple string union**: Uses `AvatarExpression` type ("idle" | "listening" | "thinking" | "talking") rather than a state machine library — the transitions are driven externally by SessionManager.
 3. **Rive loaded dynamically**: `import("@rive-app/canvas")` in `loadRive()` keeps the bundle smaller and avoids SSR issues in Next.js.
-4. **Placeholder Rive asset**: The `.riv` file at `public/tutor-avatar.riv` needs to be created in Rive editor with a `TutorStateMachine` containing `mouthOpen`, `isTalking`, `isListening`, `isThinking`, `isIdle` inputs.
+4. **Asset/code coupling**: The Rive asset contract is defined implicitly in code by the expected state-machine and input names, rather than by a typed interface.
 
 ## Test results
 
@@ -47,4 +49,9 @@ React wrapper component:
   - `speech_stopped` → `avatarService.setExpression("thinking")`
   - first `audio.delta` → `avatarService.setExpression("talking")`
   - `response.done` → `avatarService.setExpression("idle")`
-- The Rive `.riv` asset still needs to be created with the expected state machine inputs
+
+## Current Status
+
+- The live app now uses a procedural canvas avatar rather than a Rive-driven one.
+- `AvatarService` still owns expression state and audio-driven mouth animation, but it renders those states directly with canvas drawing commands.
+- The old `.riv` asset remains in the repository as a legacy artifact and is not used by the current UI.

@@ -2,58 +2,60 @@
 
 ## Overview
 
-A real-time AI video avatar tutor that uses the Socratic method to teach 6-12th graders. The system achieves sub-second end-to-end response latency by collapsing the STT+LLM+TTS pipeline into a single OpenAI Realtime API WebSocket call, paired with a Rive canvas avatar for zero-latency lip-sync.
+This app is a real-time AI tutor that uses the Socratic method and a procedural canvas avatar. The current implementation uses OpenAI Realtime over WebRTC: the browser sends the microphone as a media track, receives the model's audio as a remote media track, and uses a data channel for transcript and control events.
 
-## Pipeline Flow
+## Runtime Flow
 
 ```
-[Mic] → PCM16 24kHz → [OpenAI Realtime API WebSocket] → PCM audio chunks → [AudioPlayback] → speakers
-                        (STT + LLM + TTS internally)        ↓
-                        ~300-500ms e2e              [AnalyserNode] → amplitude → [Rive Avatar]
+[Mic track] → [OpenAI Realtime WebRTC call] → [Remote audio track] → <audio> playback
+                   ↓                                 ↓
+             data channel events              MediaStreamSource
+                   ↓                                 ↓
+      transcript + latency + avatar state      AnalyserNode → amplitude → [Canvas Avatar]
 ```
 
 ## Key Components
 
 ### Services (`src/services/`)
 
-- **SessionManager** — Top-level orchestrator. Requests ephemeral key, initializes all services, routes Realtime API events to avatar/latency/transcript systems, handles interruption.
-- **RealtimeService** — Manages WebSocket to `wss://api.openai.com/v1/realtime`. Sends session config + mic audio, receives server events, emits them via EventBus.
-- **AudioPlaybackService** — Decodes base64 PCM16 audio chunks, schedules gapless Web Audio playback, exposes AnalyserNode for lip-sync.
-- **AvatarService** — Drives Rive state machine inputs (mouthOpen, expression booleans) from audio amplitude and session events.
+- **SessionManager** — Top-level orchestrator. Requests an ephemeral client secret, acquires mic access, connects the realtime session, and routes events into transcript, latency, and avatar systems.
+- **RealtimeService** — Owns the `RTCPeerConnection`, data channel, and SDP exchange with OpenAI. Mic audio is sent over the WebRTC media track, not manually chunked in userland.
+- **AudioPlaybackService** — In the active path, connects the remote WebRTC `MediaStream` to an `AnalyserNode` for lip-sync. It also retains PCM16 decode/scheduling helpers from an earlier prototype.
+- **AvatarService** — Draws the procedural canvas avatar, reads audio amplitude, and animates expression changes such as `listening`, `thinking`, and `talking`.
 
 ### Libraries (`src/lib/`)
 
-- **EventBus** — Typed pub/sub for decoupled inter-service communication.
-- **LatencyTracker** — Records `performance.now()` timestamps keyed to pipeline stages, computes per-turn and average metrics.
-- **ConversationStore** — Accumulates transcript deltas into conversation messages.
-- **SocraticPrompt** — Builds the Socratic method system prompt with grade-level adaptation.
-- **AudioAnalyser** — Wraps Web Audio AnalyserNode, computes RMS amplitude scaled to [0,1].
-- **MicCapture** — getUserMedia → PCM16 → base64 chunks via callback.
+- **EventBus** — Lightweight pub/sub used to decouple services and UI.
+- **LatencyTracker** — Records per-turn timing and computes current and average metrics.
+- **ConversationStore** — Accumulates streaming assistant transcript deltas into finalized assistant messages.
+- **SocraticPrompt** — Builds the system prompt that constrains the tutor to short Socratic responses.
+- **AudioAnalyser** — Wraps the `AnalyserNode` and computes normalized RMS amplitude for lip-sync.
+- **MicCapture** — Legacy PCM-capture utility from the pre-WebRTC prototype. It is not part of the current live session path.
 
 ### Components (`src/components/`)
 
-- **TutorSession** — Top-level React component, manages SessionManager lifecycle.
-- **AvatarCanvas** — Canvas wrapper for Rive avatar.
-- **TranscriptPanel** — Scrolling conversation display.
-- **LatencyOverlay** — Color-coded latency metrics HUD.
-- **MicButton** — Mic toggle with visual state indicators.
+- **TutorSession** — Creates the session manager, subscribes to events, and renders the page.
+- **AvatarCanvas** — Creates the canvas avatar and boots `AvatarService`.
+- **TranscriptPanel** — Displays finalized assistant messages and the in-progress assistant transcript.
+- **LatencyOverlay** — Shows current and average latency metrics against simple budgets.
+- **MicButton** — Starts and stops the session.
 
 ### API (`src/app/api/`)
 
-- **POST /api/session** — Creates an ephemeral Realtime API key via OpenAI REST API. Browser uses this to connect directly to OpenAI (no server proxy for audio).
+- **POST /api/session** — Exchanges the server-side `OPENAI_API_KEY` for a short-lived client secret. Audio still goes directly between browser and OpenAI.
 
 ## Data Flow
 
 ```
-Browser ←—WebSocket—→ OpenAI Realtime API
+Browser ←—WebRTC—→ OpenAI Realtime API
    ↑
-   └── POST /api/session → ephemeral key (one-time)
+   └── POST /api/session → ephemeral client secret
 ```
 
-1. User clicks Start → SessionManager calls `/api/session` for ephemeral key
-2. RealtimeService opens WebSocket to OpenAI, sends session config with Socratic prompt
-3. MicCapture streams PCM16 audio to RealtimeService → WebSocket
-4. OpenAI VAD detects speech end → processes → streams response audio + transcript
-5. AudioPlaybackService plays response audio, AnalyserNode feeds AudioAnalyser
-6. AvatarService reads amplitude each frame → drives Rive mouth movement
-7. LatencyTracker records timestamps at each event → LatencyOverlay displays metrics
+1. User clicks Start.
+2. `SessionManager` resumes the local `AudioContext`, requests microphone access, and calls `/api/session`.
+3. `RealtimeService` creates a `RTCPeerConnection`, adds the microphone track, opens a data channel, and performs SDP exchange with OpenAI.
+4. On data-channel open, `RealtimeService` sends `session.update` with the Socratic prompt, audio formats, voice, and server VAD settings.
+5. OpenAI emits speech, response, and transcript events on the data channel and streams synthesized audio back on the remote media track.
+6. The remote audio plays through an `HTMLAudioElement`; `AudioPlaybackService` taps that stream with a `MediaStreamSource` so `AudioAnalyser` can drive lip-sync.
+7. `LatencyTracker` timestamps data-channel events, and `TranscriptPanel` renders assistant transcript deltas as they arrive.

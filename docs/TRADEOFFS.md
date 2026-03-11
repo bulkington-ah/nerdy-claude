@@ -7,47 +7,47 @@
 | | Collapsed | Composable (Deepgram + GPT + ElevenLabs) |
 |---|---|---|
 | Latency | 300-500ms | 700-1300ms |
-| Complexity | Single WebSocket | 3 services, 3 APIs |
+| Complexity | Single realtime session | 3 services, 3 APIs |
 | Cost | Single API billing | 3 separate billings |
 | Flexibility | Locked to OpenAI voices/models | Mix and match providers |
 | Interruption | Built-in barge-in | Must implement manually |
 
 **Why**: Latency is the primary constraint for a real-time tutoring experience. The ~400ms savings from collapsing the pipeline is significant for conversational flow.
 
-**Tradeoff**: Vendor lock-in to OpenAI. Cannot swap individual components (e.g., use a better TTS voice from ElevenLabs).
+**Tradeoff**: Vendor lock-in to OpenAI. Cannot swap individual components such as STT or TTS independently.
 
-## Rive vs Simli (Video Avatar)
+## Procedural Canvas Avatar vs Hosted Video Avatar
 
-**Chose: Rive canvas**
+**Chose: Procedural canvas avatar**
 
-| | Rive | Simli |
+| | Procedural Canvas | Hosted Video Avatar |
 |---|---|---|
-| Latency | 0ms (client-side) | 200-500ms (API call) |
-| Cost | Free (runtime) | Per-minute API pricing |
-| Realism | 2D animated | Photorealistic deepfake |
-| Customization | Full control via Rive editor | Limited to provided avatars |
+| Latency | 0ms network overhead | 200-500ms+ API call |
+| Cost | No avatar API cost | Per-minute API pricing |
+| Realism | Stylized | Often photorealistic |
+| Control | Full code-level control | Limited to provider features |
 
-**Why**: Zero latency is critical. Adding 200-500ms for a video avatar API would double our e2e latency.
+**Why**: Zero added network latency is critical. Keeping the avatar local also makes lip-sync straightforward because it can read amplitude from the live audio stream directly.
 
-**Tradeoff**: Less realistic avatar. A 2D Rive animation is clearly not a real person, which may be less engaging for some students.
+**Tradeoff**: The avatar is intentionally simple and less realistic than a hosted video avatar.
 
-## ScriptProcessorNode vs AudioWorklet
+## WebRTC Media Tracks vs Manual PCM Streaming
 
-**Chose: ScriptProcessorNode**
+**Chose: WebRTC media tracks**
 
-ScriptProcessorNode runs on the main thread and is deprecated. AudioWorklet runs on a separate thread and is the modern approach.
+The browser now sends microphone audio to OpenAI as a native WebRTC track and receives the model voice back as a remote track. A data channel carries session and transcript events.
 
-**Why**: Simpler implementation, widely supported, sufficient for our buffer sizes. The main-thread cost of processing 4096-sample buffers at 24kHz is negligible.
+**Why**: This matches the current OpenAI realtime call flow, removes the need to manually chunk microphone PCM in userland, and lets the browser handle transport details such as jitter buffering and playback synchronization.
 
-**Tradeoff**: Could cause audio glitches under heavy main-thread load. For production, AudioWorklet would be more robust.
+**Tradeoff**: The repository still contains legacy PCM helper code (`MicCapture`, chunk scheduling in `AudioPlaybackService`) that can confuse readers because it is no longer part of the live path.
 
 ## Server VAD vs Client VAD
 
 **Chose: Server VAD (OpenAI built-in)**
 
-**Why**: OpenAI's Realtime API includes server-side VAD with configurable threshold and silence duration. Using it eliminates the need for client-side VAD processing and ensures consistent behavior.
+**Why**: OpenAI's Realtime API includes server-side VAD with configurable threshold and silence duration. Using it eliminates the need for client-side VAD processing and keeps turn detection aligned with the model's own pipeline.
 
-**Tradeoff**: Slightly less responsive than client-side VAD since audio must travel to the server before VAD triggers. In practice, the difference is minimal (~50ms).
+**Tradeoff**: Slightly less responsive than an aggressively tuned client-side detector because audio must reach the server before VAD triggers.
 
 ## No Subject Selector
 
@@ -55,4 +55,4 @@ ScriptProcessorNode runs on the main thread and is deprecated. AudioWorklet runs
 
 **Why**: The Socratic method works across subjects. Forcing subject selection adds friction and limits the tutor's flexibility. The student just starts talking.
 
-**Tradeoff**: The system prompt can't be as deeply specialized for a specific subject. A math-specific tutor could have better scaffolding prompts than a general-purpose one.
+**Tradeoff**: The prompt cannot be as deeply specialized for a specific subject. A math-only tutor could scaffold more aggressively than this general-purpose version.

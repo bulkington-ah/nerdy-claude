@@ -1,12 +1,10 @@
-// OpenAI Realtime API event types
+// OpenAI Realtime API event types.
+// This file now reflects the current WebRTC/data-channel flow. Some legacy
+// PCM-streaming client event types remain for completeness.
 
 export interface RealtimeSessionConfig {
-  model: string;
-  modalities: string[];
   instructions: string;
   voice: string;
-  input_audio_format: string;
-  output_audio_format: string;
   turn_detection: {
     type: "server_vad";
     threshold: number;
@@ -46,16 +44,19 @@ export interface ResponseCreatedEvent extends RealtimeServerEvent {
   response: { id: string };
 }
 
-export interface ResponseAudioDeltaEvent extends RealtimeServerEvent {
-  type: "response.audio.delta";
-  response_id: string;
-  delta: string; // base64-encoded PCM audio
+export interface OutputAudioBufferStartedEvent extends RealtimeServerEvent {
+  type: "output_audio_buffer.started";
 }
 
-export interface ResponseAudioTranscriptDeltaEvent extends RealtimeServerEvent {
-  type: "response.audio_transcript.delta";
+export interface ResponseOutputAudioTranscriptDeltaEvent extends RealtimeServerEvent {
+  type: "response.output_audio_transcript.delta";
   response_id: string;
   delta: string; // text fragment
+}
+
+export interface ResponseOutputAudioDoneEvent extends RealtimeServerEvent {
+  type: "response.output_audio.done";
+  response_id: string;
 }
 
 export interface ResponseDoneEvent extends RealtimeServerEvent {
@@ -79,13 +80,16 @@ export type RealtimeEvent =
   | SpeechStartedEvent
   | SpeechStoppedEvent
   | ResponseCreatedEvent
-  | ResponseAudioDeltaEvent
-  | ResponseAudioTranscriptDeltaEvent
+  | OutputAudioBufferStartedEvent
+  | ResponseOutputAudioTranscriptDeltaEvent
+  | ResponseOutputAudioDoneEvent
   | ResponseDoneEvent
   | ResponseCancelledEvent
   | ErrorEvent;
 
-// Client events we send
+// Client events we may send over the data channel.
+// In the current WebRTC flow, only session.update is used; audio append/commit
+// remain here for legacy PCM streaming completeness.
 export interface SessionUpdateClientEvent {
   type: "session.update";
   session: Partial<RealtimeSessionConfig>;

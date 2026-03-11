@@ -1,5 +1,7 @@
 # Phase 3: Audio I/O — Implementation Report
 
+> Historical snapshot: this report reflects the pre-WebRTC prototype. The current app does not use `MicCapture` in the live path and does not play response audio from `response.audio.delta` chunks. See `docs/ARCHITECTURE.md` for the current design.
+
 ## What was implemented
 
 ### AudioPlaybackService (`src/services/AudioPlaybackService.ts`)
@@ -37,3 +39,9 @@ Microphone capture utility for sending audio to the Realtime API:
 - Listen for `realtime:audio_delta` events → call `service.enqueue(event.delta)`
 - On interruption (`realtime:response_cancelled`) → call `service.stop()`
 - `MicCapture.start(callback)` → callback should call `realtimeService.sendAudio(base64)`
+
+## Current Status
+
+- The live session now sends microphone audio over a WebRTC media track managed by `RealtimeService`.
+- Response playback comes from the remote WebRTC track; `AudioPlaybackService` is used primarily to tap that stream with an `AnalyserNode` for lip-sync.
+- The PCM capture and enqueue code remains in the repository as prototype-era fallback logic.

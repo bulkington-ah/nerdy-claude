@@ -2,9 +2,15 @@ import { EventBus } from "@/lib/EventBus";
 import { AUDIO_SAMPLE_RATE } from "@/config/constants";
 
 /**
- * Manages playback of base64 PCM16 audio chunks from the OpenAI Realtime API.
- * Schedules gapless playback using Web Audio API and exposes an AnalyserNode
- * for avatar lip-sync.
+ * Bridges audio playback and lip-sync analysis.
+ *
+ * Current production path:
+ * - connects the remote WebRTC MediaStream to an AnalyserNode so the avatar
+ *   can read amplitude while an <audio> element handles playback
+ *
+ * Legacy/prototype path:
+ * - retains PCM16 decode + gapless scheduling helpers that were used before
+ *   the app switched to WebRTC media tracks
  */
 export class AudioPlaybackService {
   private audioContext: AudioContext;
@@ -16,7 +22,7 @@ export class AudioPlaybackService {
   // Remote stream source (stored to prevent GC)
   private remoteStreamSource: MediaStreamAudioSourceNode | null = null;
 
-  // Gapless scheduling state
+  // Legacy gapless scheduling state used by the optional PCM enqueue path
   private scheduledSources: AudioBufferSourceNode[] = [];
   private queue: AudioBuffer[] = [];
   private nextStartTime: number = 0;
@@ -94,7 +100,7 @@ export class AudioPlaybackService {
     return floats;
   }
 
-  /** Enqueue a base64 PCM16 audio chunk for gapless playback. */
+  /** Legacy helper: enqueue a base64 PCM16 audio chunk for gapless playback. */
   public enqueue(base64: string): void {
     if (!base64) return;
 

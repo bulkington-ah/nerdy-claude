@@ -100,19 +100,19 @@ describe("Transcript Flow Integration", () => {
     });
 
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.audio_transcript.delta",
+      type: "response.output_audio_transcript.delta",
       response_id: "resp_1",
       delta: "What do ",
     });
 
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.audio_transcript.delta",
+      type: "response.output_audio_transcript.delta",
       response_id: "resp_1",
       delta: "you think ",
     });
 
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.audio_transcript.delta",
+      type: "response.output_audio_transcript.delta",
       response_id: "resp_1",
       delta: "about that?",
     });
@@ -135,7 +135,7 @@ describe("Transcript Flow Integration", () => {
       response: { id: "resp_1" },
     });
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.audio_transcript.delta",
+      type: "response.output_audio_transcript.delta",
       response_id: "resp_1",
       delta: "Hello! What would you like to learn?",
     });
@@ -150,7 +150,7 @@ describe("Transcript Flow Integration", () => {
       response: { id: "resp_2" },
     });
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.audio_transcript.delta",
+      type: "response.output_audio_transcript.delta",
       response_id: "resp_2",
       delta: "Great choice! What do you already know about it?",
     });
