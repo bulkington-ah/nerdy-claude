@@ -1,4 +1,5 @@
 import { SessionManager } from "@/services/SessionManager";
+import { RealtimeService } from "@/services/RealtimeService";
 import { EventBus } from "@/lib/EventBus";
 
 // Mock fetch for ephemeral key
@@ -266,6 +267,90 @@ describe("SessionManager", () => {
   it("should dispose all services cleanly", () => {
     expect(() => manager.dispose()).not.toThrow();
     expect(manager.getState()).toBe("idle");
+  });
+
+  describe("double response prevention", () => {
+    let sendEventSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      sendEventSpy = jest.spyOn(RealtimeService.prototype, "sendEvent");
+    });
+
+    afterEach(() => {
+      sendEventSpy.mockRestore();
+    });
+
+    it("should send response.create on speech_stopped when model is not speaking", () => {
+      eventBus.emit("realtime:speech_stopped", {
+        type: "input_audio_buffer.speech_stopped",
+        audio_end_ms: 200,
+      });
+
+      expect(sendEventSpy).toHaveBeenCalledWith({ type: "response.create" });
+    });
+
+    it("should NOT send response.create on speech_stopped when model is speaking", () => {
+      // Model starts speaking
+      eventBus.emit("realtime:audio_started", {
+        type: "output_audio_buffer.started",
+      });
+
+      sendEventSpy.mockClear();
+
+      // Echo detected as speech_stopped — should be suppressed
+      eventBus.emit("realtime:speech_stopped", {
+        type: "input_audio_buffer.speech_stopped",
+        audio_end_ms: 300,
+      });
+
+      expect(sendEventSpy).not.toHaveBeenCalledWith({ type: "response.create" });
+    });
+
+    it("should allow response.create after model finishes speaking", () => {
+      // Model speaks
+      eventBus.emit("realtime:audio_started", {
+        type: "output_audio_buffer.started",
+      });
+
+      // Model finishes
+      eventBus.emit("realtime:response_done", {
+        type: "response.done",
+        response: { id: "resp_1", status: "completed" },
+      });
+
+      sendEventSpy.mockClear();
+
+      // Student speaks again
+      eventBus.emit("realtime:speech_stopped", {
+        type: "input_audio_buffer.speech_stopped",
+        audio_end_ms: 500,
+      });
+
+      expect(sendEventSpy).toHaveBeenCalledWith({ type: "response.create" });
+    });
+
+    it("should allow response.create after response is cancelled", () => {
+      // Model speaks
+      eventBus.emit("realtime:audio_started", {
+        type: "output_audio_buffer.started",
+      });
+
+      // Response cancelled (interruption)
+      eventBus.emit("realtime:response_cancelled", {
+        type: "response.cancelled",
+        response_id: "resp_1",
+      });
+
+      sendEventSpy.mockClear();
+
+      // Student speaks again
+      eventBus.emit("realtime:speech_stopped", {
+        type: "input_audio_buffer.speech_stopped",
+        audio_end_ms: 600,
+      });
+
+      expect(sendEventSpy).toHaveBeenCalledWith({ type: "response.create" });
+    });
   });
 
   describe("sendTextMessage", () => {

@@ -10,6 +10,7 @@ export interface RealtimeSessionConfig {
     threshold: number;
     prefix_padding_ms: number;
     silence_duration_ms: number;
+    create_response?: boolean;
   };
 }
 

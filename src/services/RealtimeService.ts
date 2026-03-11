@@ -4,6 +4,7 @@ import { RealtimeServerEvent } from "@/types/realtime";
 import {
   REALTIME_CALL_MODEL,
   REALTIME_VOICE,
+  VAD_CONFIG,
 } from "@/config/constants";
 
 // Map server event types to EventBus event names
@@ -154,12 +155,7 @@ export class RealtimeService {
       session: {
         instructions: SocraticPrompt.build(),
         voice: REALTIME_VOICE,
-        turn_detection: {
-          type: "server_vad",
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 300,
-        },
+        turn_detection: { ...VAD_CONFIG },
       },
     });
   }

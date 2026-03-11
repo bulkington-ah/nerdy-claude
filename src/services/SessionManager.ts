@@ -32,6 +32,7 @@ export class SessionManager {
 
   private state: SessionState = "idle";
   private isFirstAudioDelta: boolean = true;
+  private isSpeaking: boolean = false;
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
@@ -207,6 +208,12 @@ export class SessionManager {
       this.latencyTracker.markStart(PipelineStage.INPUT_PROCESSING);
       this.latencyTracker.markStart(PipelineStage.END_TO_END);
       this.isFirstAudioDelta = true;
+
+      // Manually trigger response only when model isn't speaking.
+      // VAD has create_response: false to prevent echo-triggered double responses.
+      if (!this.isSpeaking) {
+        this.realtimeService.sendEvent({ type: "response.create" });
+      }
     });
 
     // Response created — model started generating
@@ -221,6 +228,7 @@ export class SessionManager {
     // Audio buffer started — marks when response audio actually begins playing.
     // This is the key latency marker for Time to First Audio and End-to-End.
     this.eventBus.on("realtime:audio_started", () => {
+      this.isSpeaking = true;
       if (this.isFirstAudioDelta) {
         this.isFirstAudioDelta = false;
         this.latencyTracker.markEnd(PipelineStage.TIME_TO_FIRST_AUDIO);
@@ -243,6 +251,7 @@ export class SessionManager {
 
     // Response complete
     this.eventBus.on("realtime:response_done", () => {
+      this.isSpeaking = false;
       this.latencyTracker.finalizeTurn();
 
       this.conversationStore.finalizeAssistantMessage();
@@ -251,6 +260,7 @@ export class SessionManager {
 
     // Response cancelled (interruption handled by Realtime API)
     this.eventBus.on("realtime:response_cancelled", () => {
+      this.isSpeaking = false;
       this.conversationStore.cancelAssistantMessage();
       this.latencyTracker.reset();
       this.eventBus.emit("avatar:set_expression", "listening");

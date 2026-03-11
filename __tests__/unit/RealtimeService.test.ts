@@ -1,5 +1,6 @@
 import { RealtimeService } from "@/services/RealtimeService";
 import { EventBus } from "@/lib/EventBus";
+import { VAD_CONFIG } from "@/config/constants";
 
 // Mock RTCPeerConnection and data channel
 let mockDataChannel: MockDataChannel;
@@ -114,6 +115,18 @@ describe("RealtimeService", () => {
     expect(msg.session.instructions).toBeDefined();
     expect(msg.session.voice).toBeDefined();
     expect(msg.session.turn_detection).toBeDefined();
+  });
+
+  it("should use VAD_CONFIG from constants in session config", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
+
+    const msg = JSON.parse(dc.sentMessages[0]);
+    const td = msg.session.turn_detection;
+    expect(td.threshold).toBe(VAD_CONFIG.threshold);
+    expect(td.silence_duration_ms).toBe(VAD_CONFIG.silence_duration_ms);
+    expect(td.prefix_padding_ms).toBe(VAD_CONFIG.prefix_padding_ms);
+    expect(td.create_response).toBe(false);
   });
 
   it("should emit server events via EventBus", async () => {
