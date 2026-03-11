@@ -2,6 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { Message } from "@/types/conversation";
+import MathText from "@/components/MathText";
 
 interface TranscriptPanelProps {
   messages: Message[];
@@ -53,7 +54,7 @@ export default function TranscriptPanel({
                 : "bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
             }`}
           >
-            {msg.content}
+            <MathText content={msg.content} />
           </div>
         </div>
       ))}
@@ -64,7 +65,7 @@ export default function TranscriptPanel({
             Tutor
           </span>
           <div className="max-w-[80%] rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
-            {currentAssistantText}
+            <MathText content={currentAssistantText} />
             <span className="ml-1 inline-block animate-pulse">|</span>
           </div>
         </div>

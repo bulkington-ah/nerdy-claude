@@ -33,6 +33,12 @@ describe("SocraticPrompt", () => {
     expect(prompt).toMatch(/never.*lecture|don't.*lecture|not.*lecture/i);
   });
 
+  it("should instruct to use LaTeX notation for math", () => {
+    const prompt = SocraticPrompt.build();
+    expect(prompt).toMatch(/\$.*\$/); // contains LaTeX delimiter examples
+    expect(prompt).toMatch(/latex|LaTeX/i);
+  });
+
   it("should adapt language guidance for younger students", () => {
     const promptYoung = SocraticPrompt.build({ gradeLevel: 6 });
     const promptOld = SocraticPrompt.build({ gradeLevel: 12 });
