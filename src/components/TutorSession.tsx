@@ -10,6 +10,7 @@ import AvatarCanvas from "@/components/AvatarCanvas";
 import TranscriptPanel from "@/components/TranscriptPanel";
 import LatencyOverlay from "@/components/LatencyOverlay";
 import MicButton from "@/components/MicButton";
+import MuteButton from "@/components/MuteButton";
 import TextInput from "@/components/TextInput";
 
 /**
@@ -26,6 +27,7 @@ export default function TutorSession(): React.JSX.Element {
   const [currentMetrics, setCurrentMetrics] = useState<LatencyMetrics | null>(null);
   const [averageMetrics, setAverageMetrics] = useState<LatencyMetrics | null>(null);
   const [audioAnalyser, setAudioAnalyser] = useState<AudioAnalyser | null>(null);
+  const [muted, setMuted] = useState(false);
 
   // Initialize SessionManager once
   useEffect(() => {
@@ -106,6 +108,12 @@ export default function TutorSession(): React.JSX.Element {
     managerRef.current?.endSession();
     setSessionState("idle");
     setCurrentAssistantText("");
+    setMuted(false);
+  }, []);
+
+  const handleToggleMute = useCallback(() => {
+    managerRef.current?.toggleMute();
+    setMuted(managerRef.current?.isMuted() ?? false);
   }, []);
 
   const handleSendMessage = useCallback((text: string) => {
@@ -151,11 +159,18 @@ export default function TutorSession(): React.JSX.Element {
         </div>
 
         {/* Controls */}
-        <MicButton
-          sessionState={sessionState}
-          onStart={handleStart}
-          onStop={handleStop}
-        />
+        <div className="flex items-center gap-3">
+          <MicButton
+            sessionState={sessionState}
+            onStart={handleStart}
+            onStop={handleStop}
+          />
+          <MuteButton
+            muted={muted}
+            onToggle={handleToggleMute}
+            disabled={sessionState === "idle" || sessionState === "connecting"}
+          />
+        </div>
       </div>
 
       {/* Top-right — Latency HUD */}

@@ -388,6 +388,50 @@ describe("SessionManager", () => {
     });
   });
 
+  describe("toggleMute", () => {
+    function forceState(mgr: SessionManager, state: string): void {
+      (mgr as unknown as Record<string, unknown>)["state"] = state;
+    }
+
+    it("should start unmuted", () => {
+      expect(manager.isMuted()).toBe(false);
+    });
+
+    it("should toggle mute state", () => {
+      forceState(manager, "listening");
+      // Attach a mock mic stream with a track
+      const mockTrack = { enabled: true, stop: jest.fn() } as unknown as MediaStreamTrack;
+      const mockStream = { getAudioTracks: () => [mockTrack], getTracks: () => [mockTrack] } as unknown as MediaStream;
+      (manager as unknown as Record<string, unknown>)["micStream"] = mockStream;
+
+      manager.toggleMute();
+      expect(manager.isMuted()).toBe(true);
+      expect(mockTrack.enabled).toBe(false);
+
+      manager.toggleMute();
+      expect(manager.isMuted()).toBe(false);
+      expect(mockTrack.enabled).toBe(true);
+    });
+
+    it("should be no-op when idle", () => {
+      manager.toggleMute();
+      expect(manager.isMuted()).toBe(false);
+    });
+
+    it("should reset mute state on endSession", () => {
+      forceState(manager, "listening");
+      const mockTrack = { enabled: true, stop: jest.fn() } as unknown as MediaStreamTrack;
+      const mockStream = { getAudioTracks: () => [mockTrack], getTracks: () => [mockTrack] } as unknown as MediaStream;
+      (manager as unknown as Record<string, unknown>)["micStream"] = mockStream;
+
+      manager.toggleMute();
+      expect(manager.isMuted()).toBe(true);
+
+      manager.endSession();
+      expect(manager.isMuted()).toBe(false);
+    });
+  });
+
   describe("sendTextMessage", () => {
     // Helper to set internal state for testing (private field)
     function forceState(mgr: SessionManager, state: string): void {

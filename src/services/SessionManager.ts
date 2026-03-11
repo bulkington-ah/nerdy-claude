@@ -34,6 +34,7 @@ export class SessionManager {
   private state: SessionState = "idle";
   private isFirstAudioDelta: boolean = true;
   private isSpeaking: boolean = false;
+  private muted: boolean = false;
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
@@ -73,6 +74,23 @@ export class SessionManager {
   /** Get average latency metrics. */
   public getAverageMetrics(): LatencyMetrics {
     return this.latencyTracker.getAverages();
+  }
+
+  /** Whether the mic is currently muted. */
+  public isMuted(): boolean {
+    return this.muted;
+  }
+
+  /** Toggle mic mute by enabling/disabling the audio track. */
+  public toggleMute(): void {
+    if (this.state === "idle" || this.state === "connecting") return;
+
+    this.muted = !this.muted;
+    if (this.micStream) {
+      for (const track of this.micStream.getAudioTracks()) {
+        track.enabled = !this.muted;
+      }
+    }
   }
 
   /** Get the AudioAnalyser for connecting to AvatarService lip-sync. */
@@ -159,6 +177,7 @@ export class SessionManager {
     this.stopMicStream();
     this.realtimeService.disconnect();
     this.audioPlayback.stop();
+    this.muted = false;
     this.setState("idle");
   }
 
