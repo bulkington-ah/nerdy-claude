@@ -15,8 +15,9 @@ export class AvatarService {
   private animationFrameId: number | null = null;
   private disposed: boolean = false;
 
-  // Rive instance — initialized when loadRive() is called with a canvas
+  // Rive instance and state machine inputs
   private riveInstance: unknown = null;
+  private riveInputs: Map<string, { value: number | boolean }> = new Map();
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
@@ -65,17 +66,25 @@ export class AvatarService {
   public async loadRive(canvas: HTMLCanvasElement, riveSrc: string): Promise<void> {
     const { Rive } = await import("@rive-app/canvas");
 
+    const stateMachineName = "State Machine 1";
+
     return new Promise<void>((resolve) => {
-      this.riveInstance = new Rive({
+      const rive = new Rive({
         src: riveSrc,
         canvas,
         autoplay: true,
-        stateMachines: "TutorStateMachine",
+        stateMachines: stateMachineName,
         onLoad: () => {
+          // Grab state machine inputs by name
+          const inputs = rive.stateMachineInputs(stateMachineName) ?? [];
+          for (const input of inputs) {
+            this.riveInputs.set(input.name, input as { value: number | boolean });
+          }
           this.startAnimationLoop();
           resolve();
         },
       });
+      this.riveInstance = rive;
     });
   }
 
@@ -84,10 +93,31 @@ export class AvatarService {
     const tick = (): void => {
       if (this.disposed) return;
       this.updateMouthOpen();
-      // In production, we'd set the Rive state machine inputs here
+      this.applyRiveInputs();
       this.animationFrameId = requestAnimationFrame(tick);
     };
     this.animationFrameId = requestAnimationFrame(tick);
+  }
+
+  /** Push current state to Rive state machine inputs. */
+  private applyRiveInputs(): void {
+    // Mouth amplitude → "Mouth" input (Number 0-1)
+    const mouthInput = this.riveInputs.get("Mouth");
+    if (mouthInput) {
+      mouthInput.value = this.mouthOpen;
+    }
+
+    // Expression → "talk" (Boolean) and "idle" (Boolean)
+    // Map: talking → talk=true, idle=false
+    //       listening/thinking/idle → talk=false, idle=true
+    const talkInput = this.riveInputs.get("talk");
+    const idleInput = this.riveInputs.get("idle");
+    if (talkInput) {
+      talkInput.value = this.expression === "talking";
+    }
+    if (idleInput) {
+      idleInput.value = this.expression !== "talking";
+    }
   }
 
   /** Clean up resources. */
