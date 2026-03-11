@@ -63,8 +63,9 @@ describe("POST /api/session", () => {
     expect(body.session).toBeDefined();
     expect(body.session.type).toBe("realtime");
     expect(body.session.model).toBeDefined();
-    expect(body.session.audio.output.voice).toBeDefined();
+    expect(body.session.voice).toBeDefined();
     expect(body.session.instructions).toBeDefined();
+    expect(body.session.turn_detection).toBeDefined();
   });
 
   it("should return 500 when OPENAI_API_KEY is missing", async () => {
