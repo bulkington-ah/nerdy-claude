@@ -1,4 +1,4 @@
-import { REALTIME_MODEL, REALTIME_VOICE, VAD_CONFIG } from "@/config/constants";
+import { REALTIME_MODEL, REALTIME_VOICE } from "@/config/constants";
 import { SocraticPrompt } from "@/lib/SocraticPrompt";
 
 export interface HandlerResult {
@@ -34,7 +34,6 @@ export async function createSessionHandler(): Promise<HandlerResult> {
               voice: REALTIME_VOICE,
             },
           },
-          turn_detection: { ...VAD_CONFIG },
         },
       }),
     });

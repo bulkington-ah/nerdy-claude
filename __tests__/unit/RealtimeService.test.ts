@@ -109,12 +109,16 @@ describe("RealtimeService", () => {
     const dc = await connectAndGetDataChannel();
     dc.simulateOpen();
 
-    expect(dc.sentMessages).toHaveLength(1);
-    const msg = JSON.parse(dc.sentMessages[0]);
-    expect(msg.type).toBe("session.update");
-    expect(msg.session.instructions).toBeDefined();
-    expect(msg.session.voice).toBeDefined();
-    expect(msg.session.turn_detection).toBeDefined();
+    expect(dc.sentMessages).toHaveLength(2);
+    const sessionUpdate = JSON.parse(dc.sentMessages[0]);
+    expect(sessionUpdate.type).toBe("session.update");
+    expect(sessionUpdate.session.instructions).toBeDefined();
+    expect(sessionUpdate.session.voice).toBeDefined();
+    expect(sessionUpdate.session.turn_detection).toBeDefined();
+
+    // Should cancel any auto-generated greeting
+    const cancelMsg = JSON.parse(dc.sentMessages[1]);
+    expect(cancelMsg.type).toBe("response.cancel");
   });
 
   it("should use VAD_CONFIG from constants in session config", async () => {

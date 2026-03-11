@@ -71,6 +71,8 @@ export class RealtimeService {
       console.log("[RealtimeService] Data channel open");
       this.connected = true;
       this.sendSessionConfig();
+      // Cancel any auto-generated greeting — tutor should wait for the student
+      this.sendEvent({ type: "response.cancel" });
       this.eventBus.emit("realtime:connected");
     };
 
