@@ -42,4 +42,34 @@ describe("Adaptive Scaffolding", () => {
     // Should explicitly forbid lecturing
     expect(prompt).toMatch(/never.*lecture|never.*explain.*full/i);
   });
+
+  it("should instruct to track student knowledge across the conversation", () => {
+    const prompt = SocraticPrompt.build();
+
+    // Should tell the model to notice/track what the student knows
+    expect(prompt).toMatch(/track|notice|pay attention|remember/i);
+    expect(prompt).toMatch(/understand|struggle|know/i);
+  });
+
+  it("should instruct to confirm when the student arrives at the answer", () => {
+    const prompt = SocraticPrompt.build();
+
+    // Should have a release valve — confirm and summarize when student gets it
+    expect(prompt).toMatch(/confirm|celebrate|arrived|figured out/i);
+  });
+
+  it("should handle greetings and off-topic naturally", () => {
+    const prompt = SocraticPrompt.build();
+
+    // Should not force Socratic questions on greetings/off-topic
+    expect(prompt).toMatch(/greeting|off-topic|introduction/i);
+    expect(prompt).toMatch(/naturally|warmly/i);
+  });
+
+  it("should instruct to start from what the student knows", () => {
+    const prompt = SocraticPrompt.build();
+
+    // Core Socratic instinct — always find out where they are
+    expect(prompt).toMatch(/start.*from.*what.*student.*know|where they are/i);
+  });
 });
