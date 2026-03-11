@@ -1,6 +1,6 @@
 export const REALTIME_MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
 export const REALTIME_CALL_MODEL = "gpt-realtime";
-export const REALTIME_VOICE = "alloy";
+export const REALTIME_VOICE = "sage";
 export const AUDIO_SAMPLE_RATE = 24000;
 export const AUDIO_FORMAT = "pcm16";
 
