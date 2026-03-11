@@ -29,7 +29,11 @@ export async function createSessionHandler(): Promise<HandlerResult> {
           type: "realtime",
           model: REALTIME_MODEL,
           instructions: SocraticPrompt.build(),
-          voice: REALTIME_VOICE,
+          audio: {
+            output: {
+              voice: REALTIME_VOICE,
+            },
+          },
           turn_detection: { ...VAD_CONFIG },
         },
       }),
