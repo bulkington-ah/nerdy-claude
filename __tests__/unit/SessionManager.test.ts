@@ -267,4 +267,56 @@ describe("SessionManager", () => {
     expect(() => manager.dispose()).not.toThrow();
     expect(manager.getState()).toBe("idle");
   });
+
+  describe("sendTextMessage", () => {
+    // Helper to set internal state for testing (private field)
+    function forceState(mgr: SessionManager, state: string): void {
+      (mgr as unknown as Record<string, unknown>)["state"] = state;
+    }
+
+    it("should add user message to transcript", () => {
+      forceState(manager, "listening");
+
+      manager.sendTextMessage("What is gravity?");
+
+      const messages = manager.getTranscript();
+      expect(messages).toHaveLength(1);
+      expect(messages[0].role).toBe("user");
+      expect(messages[0].content).toBe("What is gravity?");
+    });
+
+    it("should emit session:user_message event", () => {
+      forceState(manager, "listening");
+
+      const handler = jest.fn();
+      eventBus.on("session:user_message", handler);
+
+      manager.sendTextMessage("Hello tutor");
+
+      expect(handler).toHaveBeenCalledWith("Hello tutor");
+    });
+
+    it("should be no-op when idle", () => {
+      // Manager starts idle, no need to change state
+      const handler = jest.fn();
+      eventBus.on("session:user_message", handler);
+
+      manager.sendTextMessage("Should be ignored");
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(manager.getTranscript()).toHaveLength(0);
+    });
+
+    it("should be no-op when connecting", () => {
+      forceState(manager, "connecting");
+
+      const handler = jest.fn();
+      eventBus.on("session:user_message", handler);
+
+      manager.sendTextMessage("Should be ignored");
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(manager.getTranscript()).toHaveLength(0);
+    });
+  });
 });

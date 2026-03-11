@@ -8,6 +8,8 @@ import { PipelineStage, LatencyMetrics } from "@/types/pipeline";
 import { SessionState, Message } from "@/types/conversation";
 import {
   ResponseOutputAudioTranscriptDeltaEvent,
+  ConversationItemCreateClientEvent,
+  ResponseCreateClientEvent,
 } from "@/types/realtime";
 
 /**
@@ -121,6 +123,33 @@ export class SessionManager {
       this.stopMicStream();
       this.setState("idle");
     }
+  }
+
+  /**
+   * Send a text message to the tutor.
+   * Adds to transcript, emits event for UI refresh,
+   * and sends to OpenAI Realtime API via data channel.
+   */
+  public sendTextMessage(text: string): void {
+    if (this.state === "idle" || this.state === "connecting") return;
+
+    this.conversationStore.addUserMessage(text);
+    this.eventBus.emit("session:user_message", text);
+
+    const itemCreate: ConversationItemCreateClientEvent = {
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text }],
+      },
+    };
+    this.realtimeService.sendEvent(itemCreate);
+
+    const responseCreate: ResponseCreateClientEvent = {
+      type: "response.create",
+    };
+    this.realtimeService.sendEvent(responseCreate);
   }
 
   /** End the session and release all resources. */

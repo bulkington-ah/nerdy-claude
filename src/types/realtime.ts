@@ -104,10 +104,25 @@ export interface InputAudioBufferCommitEvent {
   type: "input_audio_buffer.commit";
 }
 
+export interface ConversationItemCreateClientEvent {
+  type: "conversation.item.create";
+  item: {
+    type: "message";
+    role: "user";
+    content: Array<{ type: "input_text"; text: string }>;
+  };
+}
+
+export interface ResponseCreateClientEvent {
+  type: "response.create";
+}
+
 export type RealtimeClientEvent =
   | SessionUpdateClientEvent
   | InputAudioBufferAppendEvent
-  | InputAudioBufferCommitEvent;
+  | InputAudioBufferCommitEvent
+  | ConversationItemCreateClientEvent
+  | ResponseCreateClientEvent;
 
 // Ephemeral key response from /api/session
 export interface EphemeralKeyResponse {

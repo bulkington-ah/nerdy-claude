@@ -10,6 +10,7 @@ import AvatarCanvas from "@/components/AvatarCanvas";
 import TranscriptPanel from "@/components/TranscriptPanel";
 import LatencyOverlay from "@/components/LatencyOverlay";
 import MicButton from "@/components/MicButton";
+import TextInput from "@/components/TextInput";
 
 /**
  * Top-level orchestrator component for the tutoring session.
@@ -73,12 +74,18 @@ export default function TutorSession(): React.JSX.Element {
       setSessionState("speaking");
     };
 
+    const onUserMessage = (): void => {
+      if (!managerRef.current) return;
+      setMessages(managerRef.current.getTranscript());
+    };
+
     bus.on("session:state_changed", onStateChanged);
     bus.on("realtime:transcript_delta", onTranscriptDelta);
     bus.on("realtime:response_done", onResponseDone);
     bus.on("realtime:speech_started", onSpeechStarted);
     bus.on("realtime:speech_stopped", onSpeechStopped);
     bus.on("realtime:audio_started", onAudioStarted);
+    bus.on("session:user_message", onUserMessage);
 
     return () => {
       bus.off("session:state_changed", onStateChanged);
@@ -87,6 +94,7 @@ export default function TutorSession(): React.JSX.Element {
       bus.off("realtime:speech_started", onSpeechStarted);
       bus.off("realtime:speech_stopped", onSpeechStopped);
       bus.off("realtime:audio_started", onAudioStarted);
+      bus.off("session:user_message", onUserMessage);
     };
   }, []);
 
@@ -98,6 +106,10 @@ export default function TutorSession(): React.JSX.Element {
     managerRef.current?.endSession();
     setSessionState("idle");
     setCurrentAssistantText("");
+  }, []);
+
+  const handleSendMessage = useCallback((text: string) => {
+    managerRef.current?.sendTextMessage(text);
   }, []);
 
   return (
@@ -135,6 +147,12 @@ export default function TutorSession(): React.JSX.Element {
           messages={messages}
           currentAssistantText={currentAssistantText}
         />
+        <div className="mt-3">
+          <TextInput
+            onSendMessage={handleSendMessage}
+            disabled={sessionState === "idle" || sessionState === "connecting"}
+          />
+        </div>
       </div>
 
       {/* Latency HUD */}
