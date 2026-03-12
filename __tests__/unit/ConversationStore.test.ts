@@ -20,6 +20,25 @@ describe("ConversationStore", () => {
     expect(messages[0].timestamp).toBeGreaterThan(0);
   });
 
+  it("should update an existing transcribed user message by id", () => {
+    store.addUserMessage("What is photo", "item_1");
+    store.addUserMessage("What is photosynthesis?", "item_1");
+
+    const messages = store.getMessages();
+    expect(messages).toHaveLength(1);
+    expect(messages[0].id).toBe("item_1");
+    expect(messages[0].content).toBe("What is photosynthesis?");
+  });
+
+  it("should merge transcript deltas without duplicating cumulative text", () => {
+    store.appendUserTranscriptDelta("item_1", "What is");
+    store.appendUserTranscriptDelta("item_1", "What is photosynthesis?");
+
+    const messages = store.getMessages();
+    expect(messages).toHaveLength(1);
+    expect(messages[0].content).toBe("What is photosynthesis?");
+  });
+
   it("should accumulate assistant transcript deltas into a single message", () => {
     store.startAssistantMessage();
     store.appendAssistantDelta("Great ");

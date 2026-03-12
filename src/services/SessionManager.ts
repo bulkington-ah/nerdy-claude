@@ -8,6 +8,7 @@ import { PipelineStage, LatencyMetrics } from "@/types/pipeline";
 import { SessionState, Message } from "@/types/conversation";
 import {
   ResponseOutputAudioTranscriptDeltaEvent,
+  InputAudioTranscriptionDeltaEvent,
   InputAudioTranscriptionCompletedEvent,
   ConversationItemCreateClientEvent,
   ResponseCreateClientEvent,
@@ -209,6 +210,11 @@ export class SessionManager {
     this.eventBus.emit("session:state_changed", newState);
   }
 
+  private syncUserTranscript(text: string, itemId?: string): void {
+    this.conversationStore.addUserMessage(text, itemId);
+    this.eventBus.emit("session:user_message", text);
+  }
+
   private setupEventListeners(): void {
     // When remote audio stream arrives, connect it to AudioPlaybackService
     // for AnalyserNode-based lip-sync
@@ -243,13 +249,26 @@ export class SessionManager {
       }
     });
 
+    this.eventBus.on("realtime:user_transcript_delta", (payload: unknown) => {
+      const event = payload as InputAudioTranscriptionDeltaEvent;
+      const text = event.delta?.trim();
+      if (!text) return;
+
+      if (event.item_id) {
+        this.conversationStore.appendUserTranscriptDelta(event.item_id, text);
+      } else {
+        this.conversationStore.addUserMessage(text);
+      }
+
+      this.eventBus.emit("session:user_message", text);
+    });
+
     // User speech transcribed — add to transcript
     this.eventBus.on("realtime:user_transcript", (payload: unknown) => {
       const event = payload as InputAudioTranscriptionCompletedEvent;
       const text = event.transcript?.trim();
       if (text) {
-        this.conversationStore.addUserMessage(text);
-        this.eventBus.emit("session:user_message", text);
+        this.syncUserTranscript(text, event.item_id);
       }
     });
 

@@ -16,7 +16,6 @@ class MockDataChannel {
 
   constructor(label: string) {
     this.label = label;
-    mockDataChannel = this;
   }
 
   send(data: string): void {
@@ -50,7 +49,9 @@ class MockRTCPeerConnection {
   addTrack = jest.fn();
 
   createDataChannel(label: string): MockDataChannel {
-    return new MockDataChannel(label);
+    const dataChannel = new MockDataChannel(label);
+    mockDataChannel = dataChannel;
+    return dataChannel;
   }
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
@@ -61,7 +62,8 @@ class MockRTCPeerConnection {
     this.localDescription = desc;
   }
 
-  async setRemoteDescription(_desc: RTCSessionDescriptionInit): Promise<void> {
+  async setRemoteDescription(desc: RTCSessionDescriptionInit): Promise<void> {
+    void desc;
     // no-op
   }
 
@@ -114,7 +116,7 @@ describe("RealtimeService", () => {
     expect(sessionUpdate.type).toBe("session.update");
     expect(sessionUpdate.session.instructions).toBeDefined();
     expect(sessionUpdate.session.voice).toBeDefined();
-    expect(sessionUpdate.session.turn_detection).toBeDefined();
+    expect(sessionUpdate.session.audio.input.turn_detection).toBeDefined();
 
     // Should cancel any auto-generated greeting
     const cancelMsg = JSON.parse(dc.sentMessages[1]);
@@ -126,7 +128,7 @@ describe("RealtimeService", () => {
     dc.simulateOpen();
 
     const msg = JSON.parse(dc.sentMessages[0]);
-    const td = msg.session.turn_detection;
+    const td = msg.session.audio.input.turn_detection;
     expect(td.threshold).toBe(VAD_CONFIG.threshold);
     expect(td.silence_duration_ms).toBe(VAD_CONFIG.silence_duration_ms);
     expect(td.prefix_padding_ms).toBe(VAD_CONFIG.prefix_padding_ms);
@@ -193,13 +195,14 @@ describe("RealtimeService", () => {
     );
   });
 
-  it("should include input_audio_transcription in session config", async () => {
+  it("should include audio input transcription in session config", async () => {
     const dc = await connectAndGetDataChannel();
     dc.simulateOpen();
 
     const msg = JSON.parse(dc.sentMessages[0]);
-    expect(msg.session.input_audio_transcription).toBeDefined();
-    expect(msg.session.input_audio_transcription.model).toBe("whisper-1");
+    expect(msg.session.audio.input.turn_detection).toBeDefined();
+    expect(msg.session.audio.input.transcription).toBeDefined();
+    expect(msg.session.audio.input.transcription.model).toBe("whisper-1");
   });
 
   it("should emit user_transcript for input_audio_transcription.completed", async () => {
@@ -218,6 +221,28 @@ describe("RealtimeService", () => {
       expect.objectContaining({
         type: "conversation.item.input_audio_transcription.completed",
         transcript: "Hello world",
+      }),
+    );
+  });
+
+  it("should emit user_transcript_delta for input_audio_transcription.delta", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
+
+    const handler = jest.fn();
+    eventBus.on("realtime:user_transcript_delta", handler);
+
+    dc.simulateMessage({
+      type: "conversation.item.input_audio_transcription.delta",
+      item_id: "item_1",
+      delta: "Hello",
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "conversation.item.input_audio_transcription.delta",
+        item_id: "item_1",
+        delta: "Hello",
       }),
     );
   });

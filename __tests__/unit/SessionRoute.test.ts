@@ -63,6 +63,8 @@ describe("POST /api/session", () => {
     expect(body.session).toBeDefined();
     expect(body.session.type).toBe("realtime");
     expect(body.session.model).toBeDefined();
+    expect(body.session.audio.input.turn_detection).toBeDefined();
+    expect(body.session.audio.input.transcription.model).toBe("whisper-1");
     expect(body.session.audio.output.voice).toBeDefined();
     expect(body.session.instructions).toBeDefined();
   });

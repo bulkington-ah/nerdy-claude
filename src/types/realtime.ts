@@ -3,17 +3,25 @@
 // PCM-streaming client event types remain for completeness.
 
 export interface RealtimeSessionConfig {
+  type?: "realtime";
   instructions: string;
   voice: string;
-  turn_detection: {
-    type: "server_vad";
-    threshold: number;
-    prefix_padding_ms: number;
-    silence_duration_ms: number;
-    create_response?: boolean;
-  };
-  input_audio_transcription?: {
-    model: string;
+  audio?: {
+    input?: {
+      turn_detection?: {
+        type: "server_vad";
+        threshold: number;
+        prefix_padding_ms: number;
+        silence_duration_ms: number;
+        create_response?: boolean;
+      };
+      transcription?: {
+        model: string;
+      };
+    };
+    output?: {
+      voice?: string;
+    };
   };
 }
 
@@ -73,8 +81,17 @@ export interface ResponseCancelledEvent extends RealtimeServerEvent {
   response_id: string;
 }
 
+export interface InputAudioTranscriptionDeltaEvent extends RealtimeServerEvent {
+  type: "conversation.item.input_audio_transcription.delta";
+  item_id?: string;
+  content_index?: number;
+  delta: string;
+}
+
 export interface InputAudioTranscriptionCompletedEvent extends RealtimeServerEvent {
   type: "conversation.item.input_audio_transcription.completed";
+  item_id?: string;
+  content_index?: number;
   transcript: string;
 }
 
@@ -94,6 +111,7 @@ export type RealtimeEvent =
   | ResponseOutputAudioDoneEvent
   | ResponseDoneEvent
   | ResponseCancelledEvent
+  | InputAudioTranscriptionDeltaEvent
   | InputAudioTranscriptionCompletedEvent
   | ErrorEvent;
 

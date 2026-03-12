@@ -5,12 +5,42 @@ export class ConversationStore {
   private currentAssistantText: string = "";
   private isStreaming: boolean = false;
 
-  public addUserMessage(content: string): void {
+  public addUserMessage(content: string, id?: string): void {
+    const timestamp = Date.now();
+
+    if (id) {
+      const existingIndex = this.messages.findIndex(
+        (message) => message.role === "user" && message.id === id,
+      );
+
+      if (existingIndex >= 0) {
+        this.messages[existingIndex] = {
+          ...this.messages[existingIndex],
+          content,
+          timestamp,
+        };
+        return;
+      }
+    }
+
     this.messages.push({
+      id,
       role: "user",
       content,
-      timestamp: Date.now(),
+      timestamp,
     });
+  }
+
+  public appendUserTranscriptDelta(id: string, delta: string): void {
+    const existingMessage = this.messages.find(
+      (message) => message.role === "user" && message.id === id,
+    );
+    const nextContent =
+      existingMessage && delta.startsWith(existingMessage.content)
+        ? delta
+        : `${existingMessage?.content ?? ""}${delta}`;
+
+    this.addUserMessage(nextContent, id);
   }
 
   public startAssistantMessage(): void {

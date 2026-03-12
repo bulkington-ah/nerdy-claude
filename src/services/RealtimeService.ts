@@ -21,6 +21,8 @@ const EVENT_MAP: Record<string, string> = {
   "response.output_audio.done": "realtime:audio_done",
   "response.done": "realtime:response_done",
   "response.cancelled": "realtime:response_cancelled",
+  "conversation.item.input_audio_transcription.delta":
+    "realtime:user_transcript_delta",
   "conversation.item.input_audio_transcription.completed": "realtime:user_transcript",
   "error": "realtime:error",
 };
@@ -136,7 +138,7 @@ export class RealtimeService {
     this.connected = false;
   }
 
-  public sendAudio(_base64Audio: string): void {
+  public sendAudio(): void {
     // With WebRTC, audio is sent via the media track automatically.
     // This legacy method remains only for compatibility with the pre-WebRTC
     // prototype and is a no-op in the current transport.
@@ -153,14 +155,18 @@ export class RealtimeService {
   }
 
   private sendSessionConfig(): void {
-    // GA API session config format
+    // Realtime calls use nested audio input config for server-side transcription.
     this.sendEvent({
       type: "session.update",
       session: {
         instructions: SocraticPrompt.build(),
         voice: REALTIME_VOICE,
-        turn_detection: { ...VAD_CONFIG },
-        input_audio_transcription: { model: INPUT_AUDIO_TRANSCRIPTION_MODEL },
+        audio: {
+          input: {
+            turn_detection: { ...VAD_CONFIG },
+            transcription: { model: INPUT_AUDIO_TRANSCRIPTION_MODEL },
+          },
+        },
       },
     });
   }

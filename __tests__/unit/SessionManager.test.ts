@@ -360,6 +360,25 @@ describe("SessionManager", () => {
   });
 
   describe("voice transcript", () => {
+    it("should update a streaming voice transcript without duplicating the user message", () => {
+      eventBus.emit("realtime:user_transcript_delta", {
+        type: "conversation.item.input_audio_transcription.delta",
+        item_id: "item_1",
+        delta: "What is photo",
+      });
+
+      eventBus.emit("realtime:user_transcript", {
+        type: "conversation.item.input_audio_transcription.completed",
+        item_id: "item_1",
+        transcript: "What is photosynthesis?",
+      });
+
+      const messages = manager.getTranscript();
+      expect(messages).toHaveLength(1);
+      expect(messages[0].role).toBe("user");
+      expect(messages[0].content).toBe("What is photosynthesis?");
+    });
+
     it("should add user message to transcript on input_audio_transcription", () => {
       eventBus.emit("realtime:user_transcript", {
         type: "conversation.item.input_audio_transcription.completed",
