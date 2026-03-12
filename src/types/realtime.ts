@@ -66,6 +66,18 @@ export interface ResponseOutputAudioTranscriptDeltaEvent extends RealtimeServerE
   delta: string; // text fragment
 }
 
+export interface ResponseOutputTextDeltaEvent extends RealtimeServerEvent {
+  type: "response.output_text.delta";
+  response_id: string;
+  delta: string;
+}
+
+export interface ResponseOutputTextDoneEvent extends RealtimeServerEvent {
+  type: "response.output_text.done";
+  response_id: string;
+  text: string;
+}
+
 export interface ResponseOutputAudioDoneEvent extends RealtimeServerEvent {
   type: "response.output_audio.done";
   response_id: string;
@@ -108,6 +120,8 @@ export type RealtimeEvent =
   | ResponseCreatedEvent
   | OutputAudioBufferStartedEvent
   | ResponseOutputAudioTranscriptDeltaEvent
+  | ResponseOutputTextDeltaEvent
+  | ResponseOutputTextDoneEvent
   | ResponseOutputAudioDoneEvent
   | ResponseDoneEvent
   | ResponseCancelledEvent

@@ -126,7 +126,7 @@ describe("Interruption Flow Integration", () => {
       response: { id: "resp_1" },
     });
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.output_audio_transcript.delta",
+      type: "response.output_text.delta",
       response_id: "resp_1",
       delta: "I was saying—",
     });
@@ -174,7 +174,7 @@ describe("Interruption Flow Integration", () => {
       response: { id: "resp_2" },
     });
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.output_audio_transcript.delta",
+      type: "response.output_text.delta",
       response_id: "resp_2",
       delta: "New response",
     });

@@ -140,7 +140,7 @@ describe("Text Input Flow Integration", () => {
     });
 
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.output_audio_transcript.delta",
+      type: "response.output_text.delta",
       response_id: "resp_1",
       delta: "Photosynthesis is the process by which plants convert light to energy.",
     });
@@ -172,7 +172,7 @@ describe("Text Input Flow Integration", () => {
       response: { id: "resp_1" },
     });
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.output_audio_transcript.delta",
+      type: "response.output_text.delta",
       response_id: "resp_1",
       delta: "First answer",
     });
@@ -190,7 +190,7 @@ describe("Text Input Flow Integration", () => {
       response: { id: "resp_2" },
     });
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.output_audio_transcript.delta",
+      type: "response.output_text.delta",
       response_id: "resp_2",
       delta: "Second answer",
     });

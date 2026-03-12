@@ -4,17 +4,17 @@ export interface MathSegment {
 }
 
 /**
- * Parses a string into segments of plain text, inline math ($...$),
- * and block math ($$...$$).
+ * Parses a string into segments of plain text, inline math ($...$ or \(...\)),
+ * and block math ($$...$$ or \[...\]).
  *
- * Block delimiters ($$) are matched first to avoid treating them
- * as two empty inline delimiters.
+ * Block delimiters are matched first to avoid treating them
+ * as inline delimiters.
  */
 export function parseMathSegments(input: string): MathSegment[] {
   if (!input) return [];
 
-  // Match $$...$$ (block) or $...$ (inline), non-greedy
-  const mathPattern = /(\$\$[\s\S]+?\$\$|\$[^$]+?\$)/g;
+  // Match block delimiters before inline delimiters, non-greedy.
+  const mathPattern = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)|\$[^$]+?\$)/g;
   const segments: MathSegment[] = [];
   let lastIndex = 0;
 
@@ -29,7 +29,7 @@ export function parseMathSegments(input: string): MathSegment[] {
     }
 
     const raw = match[0];
-    if (raw.startsWith("$$")) {
+    if (raw.startsWith("$$") || raw.startsWith("\\[")) {
       segments.push({
         type: "block-math",
         content: raw.slice(2, -2),
@@ -37,7 +37,7 @@ export function parseMathSegments(input: string): MathSegment[] {
     } else {
       segments.push({
         type: "inline-math",
-        content: raw.slice(1, -1),
+        content: raw.startsWith("\\(") ? raw.slice(2, -2) : raw.slice(1, -1),
       });
     }
 

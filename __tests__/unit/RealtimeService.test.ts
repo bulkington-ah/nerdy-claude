@@ -174,12 +174,54 @@ describe("RealtimeService", () => {
     );
   });
 
-  it("should emit transcript delta events (GA format)", async () => {
+  it("should emit transcript delta events from output text", async () => {
     const dc = await connectAndGetDataChannel();
     dc.simulateOpen();
 
     const handler = jest.fn();
     eventBus.on("realtime:transcript_delta", handler);
+
+    dc.simulateMessage({
+      type: "response.output_text.delta",
+      response_id: "resp_1",
+      delta: "Hello ",
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "response.output_text.delta",
+        delta: "Hello ",
+      }),
+    );
+  });
+
+  it("should emit transcript done events from output text", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
+
+    const handler = jest.fn();
+    eventBus.on("realtime:transcript_done", handler);
+
+    dc.simulateMessage({
+      type: "response.output_text.done",
+      response_id: "resp_1",
+      text: "Hello world",
+    });
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "response.output_text.done",
+        text: "Hello world",
+      }),
+    );
+  });
+
+  it("should emit audio transcript delta events separately", async () => {
+    const dc = await connectAndGetDataChannel();
+    dc.simulateOpen();
+
+    const handler = jest.fn();
+    eventBus.on("realtime:audio_transcript_delta", handler);
 
     dc.simulateMessage({
       type: "response.output_audio_transcript.delta",

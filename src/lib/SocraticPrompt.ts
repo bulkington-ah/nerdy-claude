@@ -49,6 +49,8 @@ For greetings, introductions, or off-topic chat, respond naturally and warmly. D
 When writing mathematical expressions, use LaTeX notation so they render properly:
 - Inline math: wrap with single dollar signs, e.g. $x^2 + 1$
 - Block math: wrap with double dollar signs, e.g. $$\\frac{a}{b}$$
+- Use ONLY dollar-sign delimiters. Never use \\(...\\) or \\[...\\].
+- Always include leading backslashes for LaTeX commands, e.g. \\frac, \\sqrt, \\sin
 Always prefer LaTeX over plain text for equations, fractions, exponents, roots, and symbols.
 
 ## GUARDRAILS

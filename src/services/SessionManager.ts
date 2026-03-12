@@ -9,6 +9,8 @@ import { PipelineStage, LatencyMetrics } from "@/types/pipeline";
 import { SessionState, Message } from "@/types/conversation";
 import {
   ResponseOutputAudioTranscriptDeltaEvent,
+  ResponseOutputTextDeltaEvent,
+  ResponseOutputTextDoneEvent,
   InputAudioTranscriptionDeltaEvent,
   InputAudioTranscriptionCompletedEvent,
   ConversationItemCreateClientEvent,
@@ -39,6 +41,7 @@ export class SessionManager {
   private muted: boolean = false;
   private lastTurnMetrics: LatencyMetrics | null = null;
   private pendingResponseCreateTimeout: ReturnType<typeof setTimeout> | null = null;
+  private hasCanonicalAssistantText: boolean = false;
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
@@ -235,6 +238,16 @@ export class SessionManager {
     this.eventBus.emit("session:user_message", text);
   }
 
+  private markAssistantResponseProgress(): void {
+    if (this.isFirstAudioDelta) {
+      this.isFirstAudioDelta = false;
+      this.latencyTracker.markEnd(PipelineStage.TIME_TO_FIRST_AUDIO);
+      this.latencyTracker.markEnd(PipelineStage.END_TO_END);
+      this.latencyTracker.markStart(PipelineStage.FULL_RESPONSE);
+      this.eventBus.emit("avatar:set_expression", "talking");
+    }
+  }
+
   private setupEventListeners(): void {
     // When remote audio stream arrives, connect it to AudioPlaybackService
     // for AnalyserNode-based lip-sync
@@ -295,6 +308,7 @@ export class SessionManager {
 
     // Response created — model started generating
     this.eventBus.on("realtime:response_created", () => {
+      this.hasCanonicalAssistantText = false;
       this.cancelPendingResponseCreate();
       this.latencyTracker.markEnd(PipelineStage.INPUT_PROCESSING);
       this.latencyTracker.markStart(PipelineStage.TIME_TO_FIRST_AUDIO);
@@ -321,24 +335,39 @@ export class SessionManager {
       this.latencyTracker.markEnd(PipelineStage.FULL_RESPONSE);
     });
 
-    // Transcript delta — text fragment of the response.
-    // Also used as a fallback latency marker when audio_started doesn't fire
-    // (e.g. text-triggered responses in WebRTC where audio streams automatically).
+    // Text delta — canonical text output for the response.
     this.eventBus.on("realtime:transcript_delta", (payload: unknown) => {
-      const event = payload as ResponseOutputAudioTranscriptDeltaEvent;
-      if (this.isFirstAudioDelta) {
-        this.isFirstAudioDelta = false;
-        this.latencyTracker.markEnd(PipelineStage.TIME_TO_FIRST_AUDIO);
-        this.latencyTracker.markEnd(PipelineStage.END_TO_END);
-        this.latencyTracker.markStart(PipelineStage.FULL_RESPONSE);
-        this.eventBus.emit("avatar:set_expression", "talking");
+      const event = payload as ResponseOutputTextDeltaEvent;
+      this.markAssistantResponseProgress();
+      if (!this.hasCanonicalAssistantText) {
+        this.conversationStore.setAssistantText(event.delta);
+        this.hasCanonicalAssistantText = true;
+        return;
       }
+
+      this.conversationStore.appendAssistantDelta(event.delta);
+    });
+
+    this.eventBus.on("realtime:transcript_done", (payload: unknown) => {
+      const event = payload as ResponseOutputTextDoneEvent;
+      this.markAssistantResponseProgress();
+      this.conversationStore.setAssistantText(event.text);
+      this.hasCanonicalAssistantText = true;
+    });
+
+    // Audio transcript delta — fallback only when text output is unavailable.
+    this.eventBus.on("realtime:audio_transcript_delta", (payload: unknown) => {
+      const event = payload as ResponseOutputAudioTranscriptDeltaEvent;
+      if (this.hasCanonicalAssistantText) return;
+
+      this.markAssistantResponseProgress();
       this.conversationStore.appendAssistantDelta(event.delta);
     });
 
     // Response complete
     this.eventBus.on("realtime:response_done", () => {
       this.isSpeaking = false;
+      this.hasCanonicalAssistantText = false;
       // Fallback: mark FULL_RESPONSE end if audio_done didn't fire
       this.latencyTracker.markEnd(PipelineStage.FULL_RESPONSE);
       this.lastTurnMetrics = this.latencyTracker.finalizeTurn();
@@ -351,6 +380,7 @@ export class SessionManager {
     this.eventBus.on("realtime:response_cancelled", () => {
       this.cancelPendingResponseCreate();
       this.isSpeaking = false;
+      this.hasCanonicalAssistantText = false;
       this.conversationStore.cancelAssistantMessage();
       this.latencyTracker.reset();
       this.eventBus.emit("avatar:set_expression", "listening");

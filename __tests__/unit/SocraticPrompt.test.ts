@@ -39,6 +39,12 @@ describe("SocraticPrompt", () => {
     expect(prompt).toMatch(/latex|LaTeX/i);
   });
 
+  it("should instruct the tutor to use dollar math delimiters only", () => {
+    const prompt = SocraticPrompt.build();
+    expect(prompt).toContain("Never use \\(...\\) or \\[...\\]");
+    expect(prompt).toContain("Always include leading backslashes");
+  });
+
   it("should adapt language guidance for younger students", () => {
     const promptYoung = SocraticPrompt.build({ gradeLevel: 6 });
     const promptOld = SocraticPrompt.build({ gradeLevel: 12 });

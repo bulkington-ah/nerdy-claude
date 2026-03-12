@@ -19,8 +19,24 @@ describe("parseMathSegments", () => {
     ]);
   });
 
+  it("parses inline math delimited by \\( ... \\)", () => {
+    expect(parseMathSegments("The formula \\(x^2\\) is quadratic")).toEqual([
+      { type: "text", content: "The formula " },
+      { type: "inline-math", content: "x^2" },
+      { type: "text", content: " is quadratic" },
+    ]);
+  });
+
   it("parses block math delimited by $$", () => {
     expect(parseMathSegments("Here: $$\\frac{a}{b}$$ done")).toEqual([
+      { type: "text", content: "Here: " },
+      { type: "block-math", content: "\\frac{a}{b}" },
+      { type: "text", content: " done" },
+    ]);
+  });
+
+  it("parses block math delimited by \\[ ... \\]", () => {
+    expect(parseMathSegments("Here: \\[\\frac{a}{b}\\] done")).toEqual([
       { type: "text", content: "Here: " },
       { type: "block-math", content: "\\frac{a}{b}" },
       { type: "text", content: " done" },
@@ -38,6 +54,18 @@ describe("parseMathSegments", () => {
   it("handles mixed inline and block math", () => {
     expect(
       parseMathSegments("Inline $x$ then block $$y^2$$ end")
+    ).toEqual([
+      { type: "text", content: "Inline " },
+      { type: "inline-math", content: "x" },
+      { type: "text", content: " then block " },
+      { type: "block-math", content: "y^2" },
+      { type: "text", content: " end" },
+    ]);
+  });
+
+  it("handles mixed dollar and slash-delimited math", () => {
+    expect(
+      parseMathSegments("Inline \\(x\\) then block \\[y^2\\] end")
     ).toEqual([
       { type: "text", content: "Inline " },
       { type: "inline-math", content: "x" },

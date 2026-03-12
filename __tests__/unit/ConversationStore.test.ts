@@ -52,6 +52,17 @@ describe("ConversationStore", () => {
     expect(messages[0].content).toBe("Great question! What do you already know?");
   });
 
+  it("should overwrite the in-progress assistant text when canonical text arrives", () => {
+    store.startAssistantMessage();
+    store.appendAssistantDelta("spoken transcript");
+    store.setAssistantText("canonical text");
+    store.finalizeAssistantMessage();
+
+    const messages = store.getMessages();
+    expect(messages).toHaveLength(1);
+    expect(messages[0].content).toBe("canonical text");
+  });
+
   it("should maintain conversation order across multiple turns", () => {
     store.addUserMessage("Hi");
     store.startAssistantMessage();

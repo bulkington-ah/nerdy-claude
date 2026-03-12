@@ -53,6 +53,11 @@ export class ConversationStore {
     this.currentAssistantText += delta;
   }
 
+  public setAssistantText(content: string): void {
+    if (!this.isStreaming) return;
+    this.currentAssistantText = content;
+  }
+
   public finalizeAssistantMessage(): void {
     if (!this.isStreaming) return;
     this.messages.push({

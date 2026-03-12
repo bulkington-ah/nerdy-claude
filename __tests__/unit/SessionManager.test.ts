@@ -249,13 +249,13 @@ describe("SessionManager", () => {
     });
 
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.output_audio_transcript.delta",
+      type: "response.output_text.delta",
       response_id: "resp_1",
       delta: "Hello ",
     });
 
     eventBus.emit("realtime:transcript_delta", {
-      type: "response.output_audio_transcript.delta",
+      type: "response.output_text.delta",
       response_id: "resp_1",
       delta: "there!",
     });
@@ -268,6 +268,56 @@ describe("SessionManager", () => {
     const messages = manager.getTranscript();
     expect(messages).toHaveLength(1);
     expect(messages[0].content).toBe("Hello there!");
+  });
+
+  it("should fall back to audio transcript deltas when text output is unavailable", () => {
+    eventBus.emit("realtime:response_created", {
+      type: "response.created",
+      response: { id: "resp_1" },
+    });
+
+    eventBus.emit("realtime:audio_transcript_delta", {
+      type: "response.output_audio_transcript.delta",
+      response_id: "resp_1",
+      delta: "Fallback transcript",
+    });
+
+    eventBus.emit("realtime:response_done", {
+      type: "response.done",
+      response: { id: "resp_1", status: "completed" },
+    });
+
+    const messages = manager.getTranscript();
+    expect(messages).toHaveLength(1);
+    expect(messages[0].content).toBe("Fallback transcript");
+  });
+
+  it("should replace fallback audio transcript with canonical text output", () => {
+    eventBus.emit("realtime:response_created", {
+      type: "response.created",
+      response: { id: "resp_1" },
+    });
+
+    eventBus.emit("realtime:audio_transcript_delta", {
+      type: "response.output_audio_transcript.delta",
+      response_id: "resp_1",
+      delta: "Of course! To integrate \\(frac{1}{x^2}\\), ",
+    });
+
+    eventBus.emit("realtime:transcript_done", {
+      type: "response.output_text.done",
+      response_id: "resp_1",
+      text: "Of course! To integrate $\\frac{1}{x^2}$, ",
+    });
+
+    eventBus.emit("realtime:response_done", {
+      type: "response.done",
+      response: { id: "resp_1", status: "completed" },
+    });
+
+    const messages = manager.getTranscript();
+    expect(messages).toHaveLength(1);
+    expect(messages[0].content).toBe("Of course! To integrate $\\frac{1}{x^2}$, ");
   });
 
   it("should dispose all services cleanly", () => {

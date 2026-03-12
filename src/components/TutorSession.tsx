@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { EventBus } from "@/lib/EventBus";
 import { SessionManager } from "@/services/SessionManager";
 import { AudioAnalyser } from "@/lib/AudioAnalyser";
@@ -18,50 +18,42 @@ import TextInput from "@/components/TextInput";
  * Manages SessionManager lifecycle and wires up all child components.
  */
 export default function TutorSession(): React.JSX.Element {
-  const eventBusRef = useRef<EventBus>(new EventBus());
-  const managerRef = useRef<SessionManager | null>(null);
+  const [eventBus] = useState(() => new EventBus());
+  const [manager] = useState(() => new SessionManager(eventBus));
 
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentAssistantText, setCurrentAssistantText] = useState("");
   const [currentMetrics, setCurrentMetrics] = useState<LatencyMetrics | null>(null);
   const [averageMetrics, setAverageMetrics] = useState<LatencyMetrics | null>(null);
-  const [audioAnalyser, setAudioAnalyser] = useState<AudioAnalyser | null>(null);
+  const [audioAnalyser] = useState<AudioAnalyser>(() => manager.getAudioAnalyser());
   const [muted, setMuted] = useState(false);
 
-  // Initialize SessionManager once
   useEffect(() => {
-    const manager = new SessionManager(eventBusRef.current);
-    managerRef.current = manager;
-    setAudioAnalyser(manager.getAudioAnalyser());
-
     return () => {
       manager.dispose();
-      managerRef.current = null;
     };
-  }, []);
+  }, [manager]);
 
   // Subscribe to EventBus events for UI updates
   useEffect(() => {
-    const bus = eventBusRef.current;
+    const bus = eventBus;
 
     const onStateChanged = (payload: unknown): void => {
       setSessionState(payload as SessionState);
     };
 
     const onTranscriptDelta = (): void => {
-      if (!managerRef.current) return;
-      const store = managerRef.current as unknown as { conversationStore: { getCurrentAssistantText: () => string } };
+      const store = manager as unknown as { conversationStore: { getCurrentAssistantText: () => string } };
       // Access current assistant text through the manager's public transcript
       setCurrentAssistantText(store.conversationStore?.getCurrentAssistantText?.() ?? "");
     };
 
     const onResponseDone = (): void => {
-      if (!managerRef.current) return;
-      setMessages(managerRef.current.getTranscript());
+      setMessages(manager.getTranscript());
       setCurrentAssistantText("");
-      setCurrentMetrics(managerRef.current.getCurrentMetrics());
-      setAverageMetrics(managerRef.current.getAverageMetrics());
+      setCurrentMetrics(manager.getCurrentMetrics());
+      setAverageMetrics(manager.getAverageMetrics());
     };
 
     const onSpeechStarted = (): void => {
@@ -77,12 +69,13 @@ export default function TutorSession(): React.JSX.Element {
     };
 
     const onUserMessage = (): void => {
-      if (!managerRef.current) return;
-      setMessages(managerRef.current.getTranscript());
+      setMessages(manager.getTranscript());
     };
 
     bus.on("session:state_changed", onStateChanged);
     bus.on("realtime:transcript_delta", onTranscriptDelta);
+    bus.on("realtime:transcript_done", onTranscriptDelta);
+    bus.on("realtime:audio_transcript_delta", onTranscriptDelta);
     bus.on("realtime:response_done", onResponseDone);
     bus.on("realtime:speech_started", onSpeechStarted);
     bus.on("realtime:speech_stopped", onSpeechStopped);
@@ -92,39 +85,41 @@ export default function TutorSession(): React.JSX.Element {
     return () => {
       bus.off("session:state_changed", onStateChanged);
       bus.off("realtime:transcript_delta", onTranscriptDelta);
+      bus.off("realtime:transcript_done", onTranscriptDelta);
+      bus.off("realtime:audio_transcript_delta", onTranscriptDelta);
       bus.off("realtime:response_done", onResponseDone);
       bus.off("realtime:speech_started", onSpeechStarted);
       bus.off("realtime:speech_stopped", onSpeechStopped);
       bus.off("realtime:audio_started", onAudioStarted);
       bus.off("session:user_message", onUserMessage);
     };
-  }, []);
+  }, [eventBus, manager]);
 
   const handleStart = useCallback(() => {
-    managerRef.current?.startSession();
-  }, []);
+    manager.startSession();
+  }, [manager]);
 
   const handleStop = useCallback(() => {
-    managerRef.current?.endSession();
+    manager.endSession();
     setSessionState("idle");
     setCurrentAssistantText("");
     setMuted(false);
-  }, []);
+  }, [manager]);
 
   const handleToggleMute = useCallback(() => {
-    managerRef.current?.toggleMute();
-    setMuted(managerRef.current?.isMuted() ?? false);
-  }, []);
+    manager.toggleMute();
+    setMuted(manager.isMuted());
+  }, [manager]);
 
   const handleSendMessage = useCallback((text: string) => {
-    managerRef.current?.sendTextMessage(text);
-  }, []);
+    manager.sendTextMessage(text);
+  }, [manager]);
 
   return (
     <div className="flex min-h-screen flex-col items-center gap-6 bg-zinc-50 px-4 py-8 dark:bg-black">
       {/* Avatar */}
       <AvatarCanvas
-        eventBus={eventBusRef.current}
+        eventBus={eventBus}
         audioAnalyser={audioAnalyser}
         width={300}
         height={300}
