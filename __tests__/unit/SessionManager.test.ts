@@ -279,18 +279,24 @@ describe("SessionManager", () => {
     let sendEventSpy: jest.SpyInstance;
 
     beforeEach(() => {
+      jest.useFakeTimers();
       sendEventSpy = jest.spyOn(RealtimeService.prototype, "sendEvent");
     });
 
     afterEach(() => {
+      jest.useRealTimers();
       sendEventSpy.mockRestore();
     });
 
-    it("should send response.create on speech_stopped when model is not speaking", () => {
+    it("should send response.create after the grace period when model is not speaking", () => {
       eventBus.emit("realtime:speech_stopped", {
         type: "input_audio_buffer.speech_stopped",
         audio_end_ms: 200,
       });
+
+      expect(sendEventSpy).not.toHaveBeenCalledWith({ type: "response.create" });
+
+      jest.runAllTimers();
 
       expect(sendEventSpy).toHaveBeenCalledWith({ type: "response.create" });
     });
@@ -308,6 +314,8 @@ describe("SessionManager", () => {
         type: "input_audio_buffer.speech_stopped",
         audio_end_ms: 300,
       });
+
+      jest.runAllTimers();
 
       expect(sendEventSpy).not.toHaveBeenCalledWith({ type: "response.create" });
     });
@@ -332,6 +340,8 @@ describe("SessionManager", () => {
         audio_end_ms: 500,
       });
 
+      jest.runAllTimers();
+
       expect(sendEventSpy).toHaveBeenCalledWith({ type: "response.create" });
     });
 
@@ -355,7 +365,25 @@ describe("SessionManager", () => {
         audio_end_ms: 600,
       });
 
+      jest.runAllTimers();
+
       expect(sendEventSpy).toHaveBeenCalledWith({ type: "response.create" });
+    });
+
+    it("should cancel response.create if speech resumes during the grace period", () => {
+      eventBus.emit("realtime:speech_stopped", {
+        type: "input_audio_buffer.speech_stopped",
+        audio_end_ms: 700,
+      });
+
+      eventBus.emit("realtime:speech_started", {
+        type: "input_audio_buffer.speech_started",
+        audio_start_ms: 750,
+      });
+
+      jest.runAllTimers();
+
+      expect(sendEventSpy).not.toHaveBeenCalledWith({ type: "response.create" });
     });
   });
 

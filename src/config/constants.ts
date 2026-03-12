@@ -8,11 +8,12 @@ export const VAD_CONFIG = {
   type: "server_vad" as const,
   threshold: 0.8,
   prefix_padding_ms: 300,
-  silence_duration_ms: 700,
+  silence_duration_ms: 1200,
   create_response: false,
 };
 
 export const INPUT_AUDIO_TRANSCRIPTION_MODEL = "whisper-1";
+export const RESPONSE_CREATE_GRACE_MS = 400;
 
 export const ANALYSER_FFT_SIZE = 256;
 export const ANALYSER_SMOOTHING = 0.3;

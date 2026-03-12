@@ -4,6 +4,7 @@ import { ConversationStore } from "@/lib/ConversationStore";
 import { AudioPlaybackService } from "@/services/AudioPlaybackService";
 import { RealtimeService } from "@/services/RealtimeService";
 import { AudioAnalyser } from "@/lib/AudioAnalyser";
+import { RESPONSE_CREATE_GRACE_MS } from "@/config/constants";
 import { PipelineStage, LatencyMetrics } from "@/types/pipeline";
 import { SessionState, Message } from "@/types/conversation";
 import {
@@ -37,6 +38,7 @@ export class SessionManager {
   private isSpeaking: boolean = false;
   private muted: boolean = false;
   private lastTurnMetrics: LatencyMetrics | null = null;
+  private pendingResponseCreateTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
@@ -182,6 +184,7 @@ export class SessionManager {
 
   /** End the session and release all resources. */
   public endSession(): void {
+    this.cancelPendingResponseCreate();
     this.stopMicStream();
     this.realtimeService.disconnect();
     this.audioPlayback.stop();
@@ -210,6 +213,23 @@ export class SessionManager {
     this.eventBus.emit("session:state_changed", newState);
   }
 
+  private cancelPendingResponseCreate(): void {
+    if (this.pendingResponseCreateTimeout) {
+      clearTimeout(this.pendingResponseCreateTimeout);
+      this.pendingResponseCreateTimeout = null;
+    }
+  }
+
+  private scheduleResponseCreate(): void {
+    this.cancelPendingResponseCreate();
+    this.pendingResponseCreateTimeout = setTimeout(() => {
+      this.pendingResponseCreateTimeout = null;
+      if (!this.isSpeaking) {
+        this.realtimeService.sendEvent({ type: "response.create" });
+      }
+    }, RESPONSE_CREATE_GRACE_MS);
+  }
+
   private syncUserTranscript(text: string, itemId?: string): void {
     this.conversationStore.addUserMessage(text, itemId);
     this.eventBus.emit("session:user_message", text);
@@ -225,6 +245,7 @@ export class SessionManager {
 
     // Student started speaking
     this.eventBus.on("realtime:speech_started", () => {
+      this.cancelPendingResponseCreate();
       this.eventBus.emit("avatar:set_expression", "listening");
 
       // Start latency tracking for this turn
@@ -245,7 +266,7 @@ export class SessionManager {
       // Manually trigger response only when model isn't speaking.
       // VAD has create_response: false to prevent echo-triggered double responses.
       if (!this.isSpeaking) {
-        this.realtimeService.sendEvent({ type: "response.create" });
+        this.scheduleResponseCreate();
       }
     });
 
@@ -274,6 +295,7 @@ export class SessionManager {
 
     // Response created — model started generating
     this.eventBus.on("realtime:response_created", () => {
+      this.cancelPendingResponseCreate();
       this.latencyTracker.markEnd(PipelineStage.INPUT_PROCESSING);
       this.latencyTracker.markStart(PipelineStage.TIME_TO_FIRST_AUDIO);
 
@@ -327,6 +349,7 @@ export class SessionManager {
 
     // Response cancelled (interruption handled by Realtime API)
     this.eventBus.on("realtime:response_cancelled", () => {
+      this.cancelPendingResponseCreate();
       this.isSpeaking = false;
       this.conversationStore.cancelAssistantMessage();
       this.latencyTracker.reset();
