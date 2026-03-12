@@ -1,5 +1,5 @@
-import TutorSession from "@/components/TutorSession";
+import TutorSessionClient from "@/components/TutorSessionClient";
 
 export default function Home() {
-  return <TutorSession />;
+  return <TutorSessionClient />;
 }
