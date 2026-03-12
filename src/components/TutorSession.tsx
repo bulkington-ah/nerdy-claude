@@ -121,9 +121,31 @@ export default function TutorSession(): React.JSX.Element {
   }, []);
 
   return (
-    <div className="relative min-h-screen bg-zinc-50 px-4 py-8 dark:bg-black">
-      {/* Left column — Chat & Transcript */}
-      <div className="absolute left-4 top-8 w-full max-w-md">
+    <div className="flex min-h-screen flex-col items-center gap-6 bg-zinc-50 px-4 py-8 dark:bg-black">
+      {/* Avatar */}
+      <AvatarCanvas
+        eventBus={eventBusRef.current}
+        audioAnalyser={audioAnalyser}
+        width={300}
+        height={300}
+      />
+
+      {/* Controls */}
+      <div className="flex items-center gap-3">
+        <MicButton
+          sessionState={sessionState}
+          onStart={handleStart}
+          onStop={handleStop}
+        />
+        <MuteButton
+          muted={muted}
+          onToggle={handleToggleMute}
+          disabled={sessionState === "idle" || sessionState === "connecting"}
+        />
+      </div>
+
+      {/* Transcript */}
+      <div className="w-full max-w-lg">
         <TranscriptPanel
           messages={messages}
           currentAssistantText={currentAssistantText}
@@ -136,33 +158,8 @@ export default function TutorSession(): React.JSX.Element {
         </div>
       </div>
 
-      {/* Center column — Avatar & Controls */}
-      <div className="flex flex-col items-center gap-6">
-        {/* Avatar */}
-        <AvatarCanvas
-          eventBus={eventBusRef.current}
-          audioAnalyser={audioAnalyser}
-          width={300}
-          height={300}
-        />
-
-        {/* Controls */}
-        <div className="flex items-center gap-3">
-          <MicButton
-            sessionState={sessionState}
-            onStart={handleStart}
-            onStop={handleStop}
-          />
-          <MuteButton
-            muted={muted}
-            onToggle={handleToggleMute}
-            disabled={sessionState === "idle" || sessionState === "connecting"}
-          />
-        </div>
-      </div>
-
-      {/* Top-right — Latency HUD */}
-      <div className="absolute right-4 top-8 w-full max-w-sm">
+      {/* Latency HUD */}
+      <div className="w-full max-w-lg">
         <LatencyOverlay
           currentMetrics={currentMetrics}
           averageMetrics={averageMetrics}
