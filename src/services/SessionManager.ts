@@ -280,15 +280,26 @@ export class SessionManager {
       this.latencyTracker.markEnd(PipelineStage.FULL_RESPONSE);
     });
 
-    // Transcript delta — text fragment of the response
+    // Transcript delta — text fragment of the response.
+    // Also used as a fallback latency marker when audio_started doesn't fire
+    // (e.g. text-triggered responses in WebRTC where audio streams automatically).
     this.eventBus.on("realtime:transcript_delta", (payload: unknown) => {
       const event = payload as ResponseOutputAudioTranscriptDeltaEvent;
+      if (this.isFirstAudioDelta) {
+        this.isFirstAudioDelta = false;
+        this.latencyTracker.markEnd(PipelineStage.TIME_TO_FIRST_AUDIO);
+        this.latencyTracker.markEnd(PipelineStage.END_TO_END);
+        this.latencyTracker.markStart(PipelineStage.FULL_RESPONSE);
+        this.eventBus.emit("avatar:set_expression", "talking");
+      }
       this.conversationStore.appendAssistantDelta(event.delta);
     });
 
     // Response complete
     this.eventBus.on("realtime:response_done", () => {
       this.isSpeaking = false;
+      // Fallback: mark FULL_RESPONSE end if audio_done didn't fire
+      this.latencyTracker.markEnd(PipelineStage.FULL_RESPONSE);
       this.lastTurnMetrics = this.latencyTracker.finalizeTurn();
 
       this.conversationStore.finalizeAssistantMessage();
