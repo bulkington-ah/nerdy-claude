@@ -138,7 +138,8 @@ export class RealtimeService {
     this.connected = false;
   }
 
-  public sendAudio(): void {
+  public sendAudio(base64Audio?: string): void {
+    void base64Audio;
     // With WebRTC, audio is sent via the media track automatically.
     // This legacy method remains only for compatibility with the pre-WebRTC
     // prototype and is a no-op in the current transport.
