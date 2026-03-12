@@ -2,7 +2,7 @@ import { EventBus } from "@/lib/EventBus";
 import { AudioAnalyser } from "@/lib/AudioAnalyser";
 import { AvatarExpression, AvatarInputs } from "@/types/avatar";
 
-// Colors for each expression state
+// Ring/glow colors for each expression state
 const STATE_COLORS: Record<AvatarExpression, string> = {
   idle: "#6B7280",
   listening: "#10B981",
@@ -17,7 +17,7 @@ const MOUTH_COLOR = "#DC2626";
 const MOUTH_INTERIOR = "#7F1D1D";
 
 /**
- * Manages a procedural canvas avatar with audio-driven lip-sync.
+ * Manages a procedural canvas avatar that changes glow color based on state.
  * Listens for expression change events via EventBus and reads audio amplitude
  * from AudioAnalyser each frame to drive mouth movement.
  */
@@ -138,12 +138,10 @@ export class AvatarService {
   /** Periodic blink logic. */
   private updateBlink(): void {
     this.blinkTimer++;
-    // Blink every ~3-5 seconds (random interval)
     if (!this.isBlinking && this.blinkTimer > 180 + Math.random() * 120) {
       this.isBlinking = true;
       this.blinkTimer = 0;
     }
-    // Blink lasts ~6 frames
     if (this.isBlinking && this.blinkTimer > 6) {
       this.isBlinking = false;
       this.blinkTimer = 0;
@@ -161,30 +159,11 @@ export class AvatarService {
     const cx = w / 2;
     const cy = h / 2;
     const radius = Math.min(w, h) * 0.35;
+    const color = STATE_COLORS[this.expression];
 
     ctx.clearRect(0, 0, w, h);
 
-    // State glow ring
-    this.drawGlowRing(ctx, cx, cy, radius, STATE_COLORS[this.expression]);
-
-    // Face circle with gradient
-    this.drawFace(ctx, cx, cy, radius);
-
-    // Eyes
-    this.drawEyes(ctx, cx, cy, radius);
-
-    // Mouth
-    this.drawMouth(ctx, cx, cy, radius);
-
-    // State label
-    this.drawStateLabel(ctx, cx, h, radius);
-  }
-
-  private drawGlowRing(
-    ctx: CanvasRenderingContext2D,
-    cx: number, cy: number, radius: number, color: string,
-  ): void {
-    // Pulsing glow
+    // Pulsing glow ring (color changes with state)
     const pulse = 0.6 + 0.4 * Math.sin(this.frameCount * 0.03);
     const glowRadius = radius + 12;
 
@@ -198,12 +177,8 @@ export class AvatarService {
     ctx.shadowBlur = 20;
     ctx.stroke();
     ctx.restore();
-  }
 
-  private drawFace(
-    ctx: CanvasRenderingContext2D,
-    cx: number, cy: number, radius: number,
-  ): void {
+    // Face circle with gradient
     const gradient = ctx.createRadialGradient(
       cx - radius * 0.2, cy - radius * 0.2, radius * 0.1,
       cx, cy, radius,
@@ -215,11 +190,15 @@ export class AvatarService {
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.fillStyle = gradient;
     ctx.fill();
-
-    // Subtle border
     ctx.strokeStyle = "#D97706";
     ctx.lineWidth = 2;
     ctx.stroke();
+
+    // Eyes
+    this.drawEyes(ctx, cx, cy, radius);
+
+    // Mouth
+    this.drawMouth(ctx, cx, cy, radius);
   }
 
   private drawEyes(
@@ -229,24 +208,20 @@ export class AvatarService {
     const eyeOffsetX = radius * 0.3;
     const eyeY = cy - radius * 0.15;
 
-    // Eye size varies by expression
     let eyeWidth = radius * 0.12;
     let eyeHeight = radius * 0.15;
 
     if (this.expression === "listening") {
-      eyeHeight = radius * 0.18; // wider, attentive
+      eyeHeight = radius * 0.18;
     } else if (this.expression === "thinking") {
-      eyeHeight = radius * 0.08; // squinting
+      eyeHeight = radius * 0.08;
     }
 
-    // Blink: squash eyes
     if (this.isBlinking) {
       eyeHeight = radius * 0.02;
     }
 
-    // Left eye
     this.drawEye(ctx, cx - eyeOffsetX, eyeY, eyeWidth, eyeHeight);
-    // Right eye
     this.drawEye(ctx, cx + eyeOffsetX, eyeY, eyeWidth, eyeHeight);
   }
 
@@ -259,7 +234,6 @@ export class AvatarService {
     ctx.fillStyle = EYE_COLOR;
     ctx.fill();
 
-    // Eye highlight
     if (h > w * 0.3) {
       ctx.beginPath();
       ctx.ellipse(x + w * 0.25, y - h * 0.25, w * 0.3, h * 0.3, 0, 0, Math.PI * 2);
@@ -276,23 +250,17 @@ export class AvatarService {
     const mouthWidth = radius * 0.35;
 
     if (this.expression === "talking") {
-      // Open mouth driven by audio amplitude
       const openAmount = Math.max(0.05, this.smoothedMouth);
       const mouthHeight = radius * 0.4 * openAmount;
 
-      // Mouth shape: ellipse that grows vertically with amplitude
       ctx.beginPath();
       ctx.ellipse(cx, mouthY, mouthWidth * (0.6 + openAmount * 0.4), mouthHeight, 0, 0, Math.PI * 2);
       ctx.fillStyle = MOUTH_INTERIOR;
       ctx.fill();
-
-      // Lip outline
       ctx.strokeStyle = MOUTH_COLOR;
       ctx.lineWidth = 2;
       ctx.stroke();
-
     } else if (this.expression === "thinking") {
-      // Small "o" shape
       ctx.beginPath();
       ctx.ellipse(cx, mouthY, radius * 0.08, radius * 0.1, 0, 0, Math.PI * 2);
       ctx.fillStyle = MOUTH_INTERIOR;
@@ -300,18 +268,14 @@ export class AvatarService {
       ctx.strokeStyle = MOUTH_COLOR;
       ctx.lineWidth = 2;
       ctx.stroke();
-
     } else if (this.expression === "listening") {
-      // Slight smile
       ctx.beginPath();
       ctx.arc(cx, mouthY - radius * 0.05, mouthWidth * 0.6, 0.1 * Math.PI, 0.9 * Math.PI, false);
       ctx.strokeStyle = MOUTH_COLOR;
       ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.stroke();
-
     } else {
-      // Idle: neutral line with slight curve
       ctx.beginPath();
       ctx.arc(cx, mouthY, mouthWidth * 0.5, 0.05 * Math.PI, 0.95 * Math.PI, false);
       ctx.strokeStyle = MOUTH_COLOR;
@@ -319,17 +283,6 @@ export class AvatarService {
       ctx.lineCap = "round";
       ctx.stroke();
     }
-  }
-
-  private drawStateLabel(
-    ctx: CanvasRenderingContext2D,
-    cx: number, h: number, radius: number,
-  ): void {
-    const labelY = h / 2 + radius + 30;
-    ctx.font = "bold 14px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillStyle = STATE_COLORS[this.expression];
-    ctx.fillText(this.expression.toUpperCase(), cx, labelY);
   }
 
   /** Clean up resources. */

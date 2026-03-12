@@ -138,25 +138,13 @@ export default function TutorSession(): React.JSX.Element {
 
       {/* Center column — Avatar & Controls */}
       <div className="flex flex-col items-center gap-6">
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100">
-          AI Tutor
-        </h1>
-
         {/* Avatar */}
-        <div className="relative">
-          <AvatarCanvas
-            eventBus={eventBusRef.current}
-            audioAnalyser={audioAnalyser}
-            width={300}
-            height={300}
-          />
-          {/* State indicator badge */}
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
-            <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-medium capitalize text-white">
-              {sessionState}
-            </span>
-          </div>
-        </div>
+        <AvatarCanvas
+          eventBus={eventBusRef.current}
+          audioAnalyser={audioAnalyser}
+          width={300}
+          height={300}
+        />
 
         {/* Controls */}
         <div className="flex items-center gap-3">

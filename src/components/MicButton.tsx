@@ -29,9 +29,9 @@ export default function MicButton({
   const stateLabels: Record<SessionState, string> = {
     idle: "Start Session",
     connecting: "Connecting...",
-    listening: "Listening...",
-    thinking: "Thinking...",
-    speaking: "Speaking...",
+    listening: "Stop Session",
+    thinking: "Stop Session",
+    speaking: "Stop Session",
   };
 
   const handleClick = (): void => {

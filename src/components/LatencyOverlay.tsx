@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { LatencyMetrics, LATENCY_BUDGETS, PipelineStage } from "@/types/pipeline";
 
 interface LatencyOverlayProps {
@@ -55,12 +56,18 @@ export default function LatencyOverlay({
     },
   ];
 
+  const [visible, setVisible] = useState(true);
+
   return (
     <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-        Latency
-      </div>
-      <table className="w-full">
+      <button
+        onClick={() => setVisible(!visible)}
+        className="mb-2 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-zinc-500 hover:text-zinc-300"
+      >
+        <span>Latency</span>
+        <span>{visible ? "\u25B2" : "\u25BC"}</span>
+      </button>
+      {!visible ? null : <table className="w-full">
         <thead>
           <tr className="text-zinc-400">
             <th className="text-left font-normal">Stage</th>
@@ -81,7 +88,7 @@ export default function LatencyOverlay({
             </tr>
           ))}
         </tbody>
-      </table>
+      </table>}
     </div>
   );
 }
