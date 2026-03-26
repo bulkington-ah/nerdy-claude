@@ -88,15 +88,25 @@ export class SessionManager {
     return this.muted;
   }
 
-  /** Toggle mic mute by enabling/disabling the audio track. */
-  public toggleMute(): void {
+  /** Explicitly set mic mute state. Idempotent — no-op if already in requested state. */
+  public setMuted(muted: boolean): void {
     if (this.state === "idle" || this.state === "connecting") return;
+    if (this.muted === muted) return;
 
-    this.muted = !this.muted;
+    this.muted = muted;
     if (this.micStream) {
       for (const track of this.micStream.getAudioTracks()) {
         track.enabled = !this.muted;
       }
+    }
+  }
+
+  /** Immediately trigger a response (used on PTT release). Cancels any pending VAD-scheduled response. */
+  public triggerResponse(): void {
+    if (this.state === "idle" || this.state === "connecting") return;
+    this.cancelPendingResponseCreate();
+    if (!this.isSpeaking) {
+      this.realtimeService.sendEvent({ type: "response.create" });
     }
   }
 
@@ -145,6 +155,9 @@ export class SessionManager {
 
       console.log("[SessionManager] WebRTC connected, listening");
       this.setState("listening");
+
+      // PTT: mic starts muted — user must hold Space to speak
+      this.setMuted(true);
     } catch (error) {
       console.error("[SessionManager] startSession failed:", error);
       this.stopMicStream();

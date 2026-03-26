@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { EventBus } from "@/lib/EventBus";
 import { SessionManager } from "@/services/SessionManager";
 import { AudioAnalyser } from "@/lib/AudioAnalyser";
 import { Message, SessionState } from "@/types/conversation";
 import { LatencyMetrics } from "@/types/pipeline";
+import { usePushToTalk } from "@/hooks/usePushToTalk";
 import AvatarCanvas from "@/components/AvatarCanvas";
 import TranscriptPanel from "@/components/TranscriptPanel";
 import LatencyOverlay from "@/components/LatencyOverlay";
 import MicButton from "@/components/MicButton";
-import MuteButton from "@/components/MuteButton";
 import TextInput from "@/components/TextInput";
 
 /**
@@ -27,7 +27,7 @@ export default function TutorSession(): React.JSX.Element {
   const [currentMetrics, setCurrentMetrics] = useState<LatencyMetrics | null>(null);
   const [averageMetrics, setAverageMetrics] = useState<LatencyMetrics | null>(null);
   const [audioAnalyser] = useState<AudioAnalyser>(() => manager.getAudioAnalyser());
-  const [muted, setMuted] = useState(false);
+  const textInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -103,13 +103,24 @@ export default function TutorSession(): React.JSX.Element {
     manager.endSession();
     setSessionState("idle");
     setCurrentAssistantText("");
-    setMuted(false);
   }, [manager]);
 
-  const handleToggleMute = useCallback(() => {
-    manager.toggleMute();
-    setMuted(manager.isMuted());
+  const handleSetMuted = useCallback((muted: boolean) => {
+    manager.setMuted(muted);
   }, [manager]);
+
+  const handlePttRelease = useCallback(() => {
+    manager.triggerResponse();
+  }, [manager]);
+
+  const isSessionActive = sessionState !== "idle" && sessionState !== "connecting";
+
+  const { isHolding } = usePushToTalk({
+    enabled: isSessionActive,
+    textInputRef,
+    onMuteChange: handleSetMuted,
+    onRelease: handlePttRelease,
+  });
 
   const handleSendMessage = useCallback((text: string) => {
     manager.sendTextMessage(text);
@@ -132,11 +143,17 @@ export default function TutorSession(): React.JSX.Element {
           onStart={handleStart}
           onStop={handleStop}
         />
-        <MuteButton
-          muted={muted}
-          onToggle={handleToggleMute}
-          disabled={sessionState === "idle" || sessionState === "connecting"}
-        />
+        {isSessionActive && (
+          <div
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 ${
+              isHolding
+                ? "bg-red-600 text-white animate-pulse"
+                : "bg-zinc-700 text-zinc-300"
+            }`}
+          >
+            {isHolding ? "Listening..." : "Hold Space to talk"}
+          </div>
+        )}
       </div>
 
       {/* Transcript */}
@@ -147,6 +164,7 @@ export default function TutorSession(): React.JSX.Element {
         />
         <div className="mt-3">
           <TextInput
+            ref={textInputRef}
             onSendMessage={handleSendMessage}
             disabled={sessionState === "idle" || sessionState === "connecting"}
           />

@@ -491,47 +491,147 @@ describe("SessionManager", () => {
     });
   });
 
-  describe("toggleMute", () => {
+  describe("setMuted", () => {
     function forceState(mgr: SessionManager, state: string): void {
       (mgr as unknown as Record<string, unknown>)["state"] = state;
+    }
+
+    function attachMockMicStream(mgr: SessionManager): { track: MediaStreamTrack } {
+      const mockTrack = { enabled: true, stop: jest.fn() } as unknown as MediaStreamTrack;
+      const mockStream = { getAudioTracks: () => [mockTrack], getTracks: () => [mockTrack] } as unknown as MediaStream;
+      (mgr as unknown as Record<string, unknown>)["micStream"] = mockStream;
+      return { track: mockTrack };
     }
 
     it("should start unmuted", () => {
       expect(manager.isMuted()).toBe(false);
     });
 
-    it("should toggle mute state", () => {
+    it("should mute when called with true", () => {
       forceState(manager, "listening");
-      // Attach a mock mic stream with a track
-      const mockTrack = { enabled: true, stop: jest.fn() } as unknown as MediaStreamTrack;
-      const mockStream = { getAudioTracks: () => [mockTrack], getTracks: () => [mockTrack] } as unknown as MediaStream;
-      (manager as unknown as Record<string, unknown>)["micStream"] = mockStream;
+      const { track } = attachMockMicStream(manager);
 
-      manager.toggleMute();
+      manager.setMuted(true);
       expect(manager.isMuted()).toBe(true);
-      expect(mockTrack.enabled).toBe(false);
+      expect(track.enabled).toBe(false);
+    });
 
-      manager.toggleMute();
+    it("should unmute when called with false", () => {
+      forceState(manager, "listening");
+      const { track } = attachMockMicStream(manager);
+
+      manager.setMuted(true);
+      manager.setMuted(false);
       expect(manager.isMuted()).toBe(false);
-      expect(mockTrack.enabled).toBe(true);
+      expect(track.enabled).toBe(true);
+    });
+
+    it("should be idempotent — calling setMuted(true) twice does not re-toggle", () => {
+      forceState(manager, "listening");
+      const { track } = attachMockMicStream(manager);
+
+      manager.setMuted(true);
+      expect(track.enabled).toBe(false);
+
+      manager.setMuted(true);
+      expect(manager.isMuted()).toBe(true);
+      expect(track.enabled).toBe(false);
     });
 
     it("should be no-op when idle", () => {
-      manager.toggleMute();
+      manager.setMuted(true);
+      expect(manager.isMuted()).toBe(false);
+    });
+
+    it("should be no-op when connecting", () => {
+      forceState(manager, "connecting");
+      manager.setMuted(true);
       expect(manager.isMuted()).toBe(false);
     });
 
     it("should reset mute state on endSession", () => {
       forceState(manager, "listening");
-      const mockTrack = { enabled: true, stop: jest.fn() } as unknown as MediaStreamTrack;
-      const mockStream = { getAudioTracks: () => [mockTrack], getTracks: () => [mockTrack] } as unknown as MediaStream;
-      (manager as unknown as Record<string, unknown>)["micStream"] = mockStream;
+      attachMockMicStream(manager);
 
-      manager.toggleMute();
+      manager.setMuted(true);
       expect(manager.isMuted()).toBe(true);
 
       manager.endSession();
       expect(manager.isMuted()).toBe(false);
+    });
+  });
+
+  describe("triggerResponse", () => {
+    let sendEventSpy: jest.SpyInstance;
+
+    function forceState(mgr: SessionManager, state: string): void {
+      (mgr as unknown as Record<string, unknown>)["state"] = state;
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      sendEventSpy = jest.spyOn(RealtimeService.prototype, "sendEvent");
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+      sendEventSpy.mockRestore();
+    });
+
+    it("should immediately send response.create", () => {
+      forceState(manager, "listening");
+
+      manager.triggerResponse();
+
+      expect(sendEventSpy).toHaveBeenCalledWith({ type: "response.create" });
+    });
+
+    it("should cancel any pending VAD-scheduled response.create", () => {
+      forceState(manager, "listening");
+
+      // Trigger VAD-based scheduled response
+      eventBus.emit("realtime:speech_stopped", {
+        type: "input_audio_buffer.speech_stopped",
+        audio_end_ms: 200,
+      });
+
+      sendEventSpy.mockClear();
+
+      // PTT release triggers immediate response
+      manager.triggerResponse();
+
+      expect(sendEventSpy).toHaveBeenCalledWith({ type: "response.create" });
+
+      sendEventSpy.mockClear();
+
+      // Advance past grace period — no duplicate should fire
+      jest.runAllTimers();
+      expect(sendEventSpy).not.toHaveBeenCalledWith({ type: "response.create" });
+    });
+
+    it("should not send response.create when model is speaking", () => {
+      forceState(manager, "listening");
+
+      // Model starts speaking
+      eventBus.emit("realtime:audio_started", {
+        type: "output_audio_buffer.started",
+      });
+
+      sendEventSpy.mockClear();
+      manager.triggerResponse();
+
+      expect(sendEventSpy).not.toHaveBeenCalledWith({ type: "response.create" });
+    });
+
+    it("should be no-op when idle", () => {
+      manager.triggerResponse();
+      expect(sendEventSpy).not.toHaveBeenCalledWith({ type: "response.create" });
+    });
+
+    it("should be no-op when connecting", () => {
+      forceState(manager, "connecting");
+      manager.triggerResponse();
+      expect(sendEventSpy).not.toHaveBeenCalledWith({ type: "response.create" });
     });
   });
 
